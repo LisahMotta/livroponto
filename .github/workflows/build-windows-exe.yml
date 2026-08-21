@@ -1,0 +1,62 @@
+name: Build Windows exe
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          pip install .
+          pip install pyinstaller
+
+      - name: Empacotar com PyInstaller
+        run: >
+          pyinstaller --onefile --name livroponto --noconfirm
+          --collect-all streamlit
+          --collect-all altair
+          --collect-all pydeck
+          --collect-all pyarrow
+          --collect-submodules livroponto
+          --add-data "livroponto;livroponto"
+          windows_launcher.py
+
+      - name: "Smoke test: módulos empacotados importam"
+        run: .\dist\livroponto.exe --check
+
+      - name: "Smoke test: servidor sobe e responde ao health check"
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath ".\dist\livroponto.exe" `
+            -ArgumentList "--server.headless=true","--server.port=8501" -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 12; $i++) {
+              Start-Sleep -Seconds 5
+              try {
+                $resp = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 5
+                if ($resp.Content.Trim() -eq "ok") { $ok = $true; break }
+              } catch {
+                Write-Host "ainda subindo... ($($_.Exception.Message))"
+              }
+            }
+            if (-not $ok) { throw "o .exe nao respondeu 'ok' no health check a tempo" }
+            Write-Host "Health check OK"
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: livroponto-windows-exe
+          path: dist/livroponto.exe
+          retention-days: 14
