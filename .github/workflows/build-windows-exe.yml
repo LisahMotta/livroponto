@@ -36,12 +36,24 @@ jobs:
       - name: "Smoke test: servidor sobe e responde ao health check"
         shell: pwsh
         run: |
+          # Evita o prompt interativo de onboarding do Streamlit (pede e-mail
+          # no primeiro uso) travar o processo esperando entrada do stdin.
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.streamlit" | Out-Null
+          Set-Content -Path "$env:USERPROFILE\.streamlit\credentials.toml" -Value "[general]`nemail = `"`""
+
           $proc = Start-Process -FilePath ".\dist\livroponto.exe" `
-            -ArgumentList "--server.headless=true","--server.port=8501" -PassThru
+            -ArgumentList "--server.headless=true","--server.port=8501" `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput "exe_stdout.log" `
+            -RedirectStandardError "exe_stderr.log"
           try {
             $ok = $false
             for ($i = 0; $i -lt 12; $i++) {
               Start-Sleep -Seconds 5
+              if ($proc.HasExited) {
+                Write-Host "processo encerrou sozinho (exit code $($proc.ExitCode))"
+                break
+              }
               try {
                 $resp = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 5
                 if ($resp.Content.Trim() -eq "ok") { $ok = $true; break }
@@ -49,10 +61,14 @@ jobs:
                 Write-Host "ainda subindo... ($($_.Exception.Message))"
               }
             }
+            Write-Host "----- stdout do .exe -----"
+            Get-Content "exe_stdout.log" -ErrorAction SilentlyContinue
+            Write-Host "----- stderr do .exe -----"
+            Get-Content "exe_stderr.log" -ErrorAction SilentlyContinue
             if (-not $ok) { throw "o .exe nao respondeu 'ok' no health check a tempo" }
             Write-Host "Health check OK"
           } finally {
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
           }
 
       - uses: actions/upload-artifact@v4
