@@ -31,8 +31,11 @@ def main() -> None:
 
     from streamlit.web import cli as stcli
 
+    # Empacotado pelo PyInstaller, o Streamlit não acha os metadados do
+    # pacote (importlib.metadata) e liga "developmentMode" sozinho — o que
+    # por sua vez proíbe usar --server.port. Desligamos aqui sempre.
     extras = args if args else ["--server.headless=false"]
-    sys.argv = ["streamlit", "run", _caminho_app(), *extras]
+    sys.argv = ["streamlit", "run", _caminho_app(), "--global.developmentMode=false", *extras]
     sys.exit(stcli.main())
 
 
