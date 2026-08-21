@@ -1,0 +1,6 @@
+[
+  {"mes": 4, "dia": 19, "tipo": "PONTO_FACULTATIVO", "descricao": "Aniversário do município"},
+  {"mes": 7, "dia": 8, "tipo": "RECESSO", "descricao": "Recesso escolar"},
+  {"mes": 7, "dia": 9, "tipo": "RECESSO", "descricao": "Recesso escolar"},
+  {"mes": 6, "dia": 21, "tipo": "LETIVO", "descricao": "Sábado letivo (reposição)"}
+]

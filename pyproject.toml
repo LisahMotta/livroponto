@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "livroponto"
+version = "1.0.0"
+description = "Gerador do Livro Ponto (registro de frequência) escolar em PDF"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1",
+    "pyxlsb>=1.0.10",
+    "reportlab>=4.0",
+    "holidays>=0.45",
+]
+
+[project.scripts]
+livroponto = "livroponto.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["livroponto*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
