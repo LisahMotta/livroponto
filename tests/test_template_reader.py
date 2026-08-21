@@ -1,7 +1,7 @@
 from openpyxl import load_workbook
 
-from livroponto.models import TipoServidor
-from livroponto.readers.template_reader import criar_modelo, ler_modelo
+from livroponto.models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
+from livroponto.readers.template_reader import criar_modelo, ler_modelo, salvar_modelo
 
 
 def test_criar_modelo_gera_abas_esperadas(tmp_path):
@@ -36,3 +36,37 @@ def test_ler_modelo_roundtrip(tmp_path):
     assert len(config.pessoas) == 2
     tipos = {p.tipo for p in config.pessoas}
     assert tipos == {TipoServidor.ADMINISTRATIVO, TipoServidor.DOCENTE}
+
+
+def test_salvar_modelo_e_ler_modelo_preservam_excecoes_e_jornada_codigo(tmp_path):
+    config = LivroPontoConfig(
+        escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
+        mes=7,
+        ano=2026,
+        uf="SP",
+        cidade_assinatura="Cidade Exemplo",
+        pessoas=[
+            Pessoa(
+                nome="Docente Fictício",
+                tipo=TipoServidor.DOCENTE,
+                rg="1.111.111-1",
+                cargo="PEB II",
+                jornada_codigo="B",
+                disciplinas="HISTÓRIA",
+            ),
+        ],
+        dias_excecao=[
+            DiaNaoLetivo(mes=7, dia=8, tipo="RECESSO", descricao="Recesso escolar"),
+        ],
+    )
+
+    caminho = tmp_path / "modelo.xlsx"
+    salvar_modelo(config, caminho)
+    recarregado = ler_modelo(caminho)
+
+    assert recarregado.uf == "SP"
+    assert len(recarregado.pessoas) == 1
+    assert recarregado.pessoas[0].jornada_codigo == "B"
+    assert len(recarregado.dias_excecao) == 1
+    assert recarregado.dias_excecao[0].tipo == "RECESSO"
+    assert recarregado.dias_excecao[0].dia == 8

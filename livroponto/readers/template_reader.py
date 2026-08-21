@@ -1,13 +1,15 @@
 """Leitor/gerador do modelo simplificado (.xlsx) — alternativa para quem não
-tem a planilha legada SEDUC-SP: uma aba "Escola" (campo/valor) e uma aba
-"Pessoas" (uma linha por servidor)."""
+tem a planilha legada SEDUC-SP: uma aba "Escola" (campo/valor), uma aba
+"Pessoas" (uma linha por servidor) e uma aba "Excecoes" (recesso, ponto
+facultativo etc.). É o mesmo formato usado para persistir o que é editado
+no app web (`livroponto app`) — editar lá e "Salvar" grava nesse formato."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from ..models import Escola, LivroPontoConfig, Pessoa, TipoServidor
+from ..models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
 
 COLUNAS_PESSOAS = [
     "tipo",
@@ -15,6 +17,7 @@ COLUNAS_PESSOAS = [
     "rg",
     "cargo",
     "jornada_semanal",
+    "jornada_codigo",
     "ponto",
     "entrada",
     "saida",
@@ -25,6 +28,8 @@ COLUNAS_PESSOAS = [
     "situacao",
     "observacoes",
 ]
+
+COLUNAS_EXCECOES = ["mes", "dia", "tipo", "descricao"]
 
 CAMPOS_ESCOLA = [
     ("nome", "Nome da escola"),
@@ -38,59 +43,96 @@ CAMPOS_ESCOLA = [
     ("codigo_cie", "Código CIE"),
 ]
 
+CAMPOS_EXTRAS = ["mes", "ano", "cidade_assinatura", "uf"]
+
+
+def _linha_pessoa(p: Pessoa) -> list:
+    return [
+        p.tipo.value,
+        p.nome,
+        p.rg,
+        p.cargo,
+        p.jornada_semanal if p.jornada_semanal is not None else "",
+        p.jornada_codigo,
+        "S" if p.ponto else "N",
+        p.entrada,
+        p.saida,
+        p.intervalo_inicio,
+        p.intervalo_fim,
+        p.disciplinas,
+        p.categoria,
+        p.situacao,
+        p.observacoes,
+    ]
+
 
 def criar_modelo(caminho: str | Path) -> None:
     """Gera um arquivo .xlsx em branco (com um exemplo) para o usuário
     preencher, no formato aceito por `ler_modelo`."""
+    escola = Escola()
+    pessoas = [
+        Pessoa(
+            nome="Fulano de Tal",
+            tipo=TipoServidor.ADMINISTRATIVO,
+            rg="12.345.678-9",
+            cargo="Agente de Organização Escolar",
+            jornada_semanal=40,
+            entrada="07:00",
+            saida="16:00",
+            intervalo_inicio="11:00",
+            intervalo_fim="12:00",
+        ),
+        Pessoa(
+            nome="Ciclana da Silva",
+            tipo=TipoServidor.DOCENTE,
+            rg="98.765.432-1",
+            cargo="Professor de Educação Básica II",
+            categoria="Titular de Cargo",
+            disciplinas="MATEMÁTICA",
+            jornada_codigo="B",
+        ),
+    ]
+    config = LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas)
+    salvar_modelo(config, caminho)
+
+
+def salvar_modelo(config: LivroPontoConfig, caminho: str | Path) -> None:
+    """Grava um LivroPontoConfig no formato .xlsx simplificado (abas Escola/
+    Pessoas/Excecoes) — usado tanto por `criar-modelo` quanto pelo botão
+    "Salvar" do app web."""
     wb = Workbook()
+    escola = config.escola
 
     aba_escola = wb.active
     aba_escola.title = "Escola"
     aba_escola.append(["campo", "valor"])
-    for campo, rotulo in CAMPOS_ESCOLA:
-        aba_escola.append([campo, ""])
-    aba_escola.append(["mes", 4])
-    aba_escola.append(["ano", 2026])
-    aba_escola.append(["cidade_assinatura", ""])
+    valores_escola = {
+        "nome": escola.nome,
+        "diretoria_ensino": escola.diretoria_ensino,
+        "endereco": escola.endereco,
+        "municipio": escola.municipio,
+        "telefone1": escola.telefone1,
+        "telefone2": escola.telefone2,
+        "email": escola.email,
+        "codigo_ua": escola.codigo_ua,
+        "codigo_cie": escola.codigo_cie,
+    }
+    for campo, _rotulo in CAMPOS_ESCOLA:
+        aba_escola.append([campo, valores_escola.get(campo, "")])
+    aba_escola.append(["mes", config.mes])
+    aba_escola.append(["ano", config.ano])
+    aba_escola.append(["cidade_assinatura", config.cidade_assinatura])
+    aba_escola.append(["uf", config.uf])
 
     aba_pessoas = wb.create_sheet("Pessoas")
     aba_pessoas.append(COLUNAS_PESSOAS)
-    aba_pessoas.append(
-        [
-            "ADMINISTRATIVO",
-            "Fulano de Tal",
-            "12.345.678-9",
-            "Agente de Organização Escolar",
-            40,
-            "S",
-            "07:00",
-            "16:00",
-            "11:00",
-            "12:00",
-            "",
-            "",
-            "",
-            "",
-        ]
-    )
-    aba_pessoas.append(
-        [
-            "DOCENTE",
-            "Ciclana da Silva",
-            "98.765.432-1",
-            "Professor de Educação Básica II",
-            "",
-            "S",
-            "",
-            "",
-            "",
-            "",
-            "MATEMÁTICA",
-            "Titular de Cargo",
-            "PEB II",
-            "",
-        ]
-    )
+    for p in config.pessoas:
+        aba_pessoas.append(_linha_pessoa(p))
+
+    aba_excecoes = wb.create_sheet("Excecoes")
+    aba_excecoes.append(COLUNAS_EXCECOES)
+    for e in config.dias_excecao:
+        aba_excecoes.append([e.mes, e.dia, e.tipo, e.descricao])
 
     Path(caminho).parent.mkdir(parents=True, exist_ok=True)
     wb.save(caminho)
@@ -130,47 +172,74 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
     mes = int(campos["mes"])
     ano = int(campos["ano"])
     cidade_assinatura = str(campos.get("cidade_assinatura") or escola.municipio)
+    uf = str(campos.get("uf") or "SP")
 
-    aba_pessoas = wb["Pessoas"]
-    header = [str(c).strip().lower() if c else "" for c in next(aba_pessoas.iter_rows(min_row=1, max_row=1, values_only=True))]
-    idx = {nome: i for i, nome in enumerate(header)}
+    def _ler_tabela(nome_aba: str) -> tuple[dict[str, int], list[tuple]]:
+        aba = wb[nome_aba]
+        linhas = list(aba.iter_rows(min_row=1, values_only=True))
+        if not linhas:
+            return {}, []
+        header = [str(c).strip().lower() if c else "" for c in linhas[0]]
+        idx = {n: i for i, n in enumerate(header)}
+        return idx, linhas[1:]
 
-    def campo(row, nome, default=""):
+    def campo(row, idx, nome, default=""):
         i = idx.get(nome)
         if i is None or i >= len(row):
             return default
         v = row[i]
         return default if v is None else v
 
+    idx_pessoas, linhas_pessoas = _ler_tabela("Pessoas")
     pessoas: list[Pessoa] = []
-    for row in aba_pessoas.iter_rows(min_row=2, values_only=True):
+    for row in linhas_pessoas:
         if not row or all(v in (None, "") for v in row):
             continue
-        nome = str(campo(row, "nome", "")).strip()
+        nome = str(campo(row, idx_pessoas, "nome", "")).strip()
         if not nome:
             continue
-        tipo_raw = str(campo(row, "tipo", "ADMINISTRATIVO")).strip().upper()
+        tipo_raw = str(campo(row, idx_pessoas, "tipo", "ADMINISTRATIVO")).strip().upper()
         tipo = TipoServidor.DOCENTE if tipo_raw.startswith("DOC") else TipoServidor.ADMINISTRATIVO
-        ponto_raw = str(campo(row, "ponto", "S")).strip().upper()
-        jornada_raw = campo(row, "jornada_semanal", "")
+        ponto_raw = str(campo(row, idx_pessoas, "ponto", "S")).strip().upper()
+        jornada_raw = campo(row, idx_pessoas, "jornada_semanal", "")
         pessoas.append(
             Pessoa(
                 nome=nome,
                 tipo=tipo,
-                rg=str(campo(row, "rg", "")),
-                cargo=str(campo(row, "cargo", "")),
+                rg=str(campo(row, idx_pessoas, "rg", "")),
+                cargo=str(campo(row, idx_pessoas, "cargo", "")),
                 jornada_semanal=float(jornada_raw) if jornada_raw not in ("", None) else None,
+                jornada_codigo=str(campo(row, idx_pessoas, "jornada_codigo", "")),
                 ponto=(ponto_raw != "N"),
-                entrada=str(campo(row, "entrada", "")),
-                saida=str(campo(row, "saida", "")),
-                intervalo_inicio=str(campo(row, "intervalo_inicio", "")),
-                intervalo_fim=str(campo(row, "intervalo_fim", "")),
-                disciplinas=str(campo(row, "disciplinas", "")),
-                categoria=str(campo(row, "categoria", "")),
-                situacao=str(campo(row, "situacao", "")),
-                observacoes=str(campo(row, "observacoes", "")),
+                entrada=str(campo(row, idx_pessoas, "entrada", "")),
+                saida=str(campo(row, idx_pessoas, "saida", "")),
+                intervalo_inicio=str(campo(row, idx_pessoas, "intervalo_inicio", "")),
+                intervalo_fim=str(campo(row, idx_pessoas, "intervalo_fim", "")),
+                disciplinas=str(campo(row, idx_pessoas, "disciplinas", "")),
+                categoria=str(campo(row, idx_pessoas, "categoria", "")),
+                situacao=str(campo(row, idx_pessoas, "situacao", "")),
+                observacoes=str(campo(row, idx_pessoas, "observacoes", "")),
             )
         )
+
+    dias_excecao: list[DiaNaoLetivo] = []
+    if "Excecoes" in wb.sheetnames:
+        idx_exc, linhas_exc = _ler_tabela("Excecoes")
+        for row in linhas_exc:
+            if not row or all(v in (None, "") for v in row):
+                continue
+            mes_e = campo(row, idx_exc, "mes", "")
+            dia_e = campo(row, idx_exc, "dia", "")
+            if mes_e in ("", None) or dia_e in ("", None):
+                continue
+            dias_excecao.append(
+                DiaNaoLetivo(
+                    mes=int(mes_e),
+                    dia=int(dia_e),
+                    tipo=str(campo(row, idx_exc, "tipo", "")).strip().upper(),
+                    descricao=str(campo(row, idx_exc, "descricao", "")),
+                )
+            )
 
     return LivroPontoConfig(
         escola=escola,
@@ -178,4 +247,6 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
         ano=ano,
         pessoas=pessoas,
         cidade_assinatura=cidade_assinatura,
+        uf=uf,
+        dias_excecao=dias_excecao,
     )

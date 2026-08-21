@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -80,6 +81,21 @@ def _cmd_criar_modelo(args: argparse.Namespace) -> None:
     print(f"  livroponto gerar --entrada {caminho} --saida livro_ponto.pdf")
 
 
+def _cmd_app(args: argparse.Namespace) -> None:
+    caminho_app = Path(__file__).resolve().parent / "webapp" / "app.py"
+    comando = [sys.executable, "-m", "streamlit", "run", str(caminho_app)]
+    if args.porta:
+        comando += ["--server.port", str(args.porta)]
+    try:
+        subprocess.run(comando, check=True)
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            "Streamlit não encontrado. Instale com: pip install streamlit"
+        ) from exc
+    except KeyboardInterrupt:
+        pass
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="livroponto",
@@ -124,6 +140,12 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     p_modelo.add_argument("--saida", default="modelo_livro_ponto.xlsx")
     p_modelo.set_defaults(func=_cmd_criar_modelo)
+
+    p_app = sub.add_parser(
+        "app", help="Abre o app web (Streamlit) para editar os dados e gerar o PDF."
+    )
+    p_app.add_argument("--porta", type=int, default=None, help="Porta do servidor (padrão do Streamlit).")
+    p_app.set_defaults(func=_cmd_app)
 
     return parser
 

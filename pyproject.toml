@@ -13,6 +13,8 @@ dependencies = [
     "pyxlsb>=1.0.10",
     "reportlab>=4.0",
     "holidays>=0.45",
+    "streamlit>=1.30",
+    "pandas>=2.0",
 ]
 
 [project.scripts]
