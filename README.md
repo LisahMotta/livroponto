@@ -4,7 +4,10 @@ Aplicativo em Python que gera o **Livro Ponto** (registro de frequência) de
 uma escola em PDF, pronto para impressão: termo de abertura, uma folha por
 servidor com o calendário do mês para assinatura manual de entrada/saída, e
 termo de encerramento — para o pessoal administrativo e para o pessoal
-docente.
+docente. Tem um **app web para editar os dados** (escola, servidores,
+feriados) direto no navegador, sem precisar mexer em planilha — a linha de
+comando (`livroponto gerar`) e a edição manual de um `.xlsx` continuam
+funcionando pra quem preferir.
 
 Foi construído a partir do modelo de planilha "LIVRO PONTO" (.xlsb) usado
 pelas escolas da rede estadual de São Paulo (SEDUC-SP), automatizando o que
@@ -13,7 +16,12 @@ feriados/fins de semana/recesso, e emitir uma folha por pessoa.
 
 ## O que o app faz
 
-- Lê os dados da escola e dos servidores de **duas fontes possíveis**:
+- **Editor web** (`livroponto app`): edita escola, servidores/professores e
+  exceções de calendário em tabelas no navegador, e a partir daí baixa o
+  cadastro (`.xlsx`) e/ou o Livro Ponto (`.pdf`) — veja a seção
+  [App web](#app-web-editor) abaixo.
+- Lê os dados da escola e dos servidores de **duas fontes possíveis**
+  (usadas tanto pela linha de comando quanto pelo editor web):
   1. A planilha legada `.xlsb` (abas `Escola`, `Funcionários`, `Professores`,
      `LP-Abertura`) — o mesmo modelo usado pelas escolas da rede estadual.
   2. Um modelo `.xlsx` simplificado (gerado pelo próprio app), para quem não
@@ -52,7 +60,28 @@ pip install -e .        # opcional: registra o comando `livroponto`
 
 Requer Python 3.10+.
 
-## Uso
+## App web (editor)
+
+```bash
+livroponto app
+```
+
+Abre `http://localhost:8501` no navegador com:
+
+- **Dados da escola** e **período do livro** (mês/ano/UF/cidade) em campos de texto;
+- **Servidores e professores** numa tabela editável (adicionar/editar/remover linhas direto na tela — sem abrir Excel);
+- **Feriados e exceções de calendário** (recesso, ponto facultativo, suspensão, sábado letivo) em outra tabela editável;
+- botão **Salvar cadastro**, que baixa um `.xlsx` com tudo o que foi editado (pra reabrir depois e continuar de onde parou);
+- botão **Gerar PDF**, que baixa o Livro Ponto pronto pra imprimir.
+
+Dá pra começar do zero ou carregar um arquivo existente (o `.xlsx` deste
+app ou o `.xlsb` legado da rede estadual) pela barra lateral, editar o que
+for preciso, e baixar de novo. As edições ficam só na sessão do navegador
+até você clicar em salvar — nada é gravado automaticamente em disco.
+
+Use `livroponto app --porta 8600` para escolher outra porta.
+
+## Uso pela linha de comando
 
 ### 1. A partir da planilha legada (.xlsb)
 
@@ -74,10 +103,13 @@ Gere o modelo em branco:
 livroponto criar-modelo --saida modelo_livro_ponto.xlsx
 ```
 
-Preencha as abas **Escola** (campo/valor) e **Pessoas** (uma linha por
+Preencha as abas **Escola** (campo/valor), **Pessoas** (uma linha por
 servidor — colunas `tipo`, `nome`, `rg`, `cargo`, `jornada_semanal`,
-`ponto`, `entrada`, `saida`, `intervalo_inicio`, `intervalo_fim`,
-`disciplinas`, `categoria`, `situacao`, `observacoes`) e então:
+`jornada_codigo`, `ponto`, `entrada`, `saida`, `intervalo_inicio`,
+`intervalo_fim`, `disciplinas`, `categoria`, `situacao`, `observacoes`) e
+**Excecoes** (opcional — colunas `mes`, `dia`, `tipo`, `descricao`, mesmo
+formato do JSON descrito abaixo) — ou preencha tudo isso pelo
+[app web](#app-web-editor), que gera esse mesmo arquivo. Depois:
 
 ```bash
 livroponto gerar --entrada modelo_livro_ponto.xlsx --saida livro_ponto.pdf
@@ -117,10 +149,13 @@ livroponto/
   holidays_br.py          feriados nacionais/estaduais + exceções manuais
   readers/
     xlsb_reader.py         lê a planilha legada .xlsb (SEDUC-SP)
-    template_reader.py     lê/gera o modelo simplificado .xlsx
+    template_reader.py     lê/grava o modelo simplificado .xlsx
   pdf/
     builder.py              monta o PDF final (termos + folhas)
-  cli.py                  comando `livroponto` (gerar / criar-modelo)
+  webapp/
+    app.py                   app Streamlit (editor web)
+    state.py                 conversão entre modelos e DataFrames das tabelas
+  cli.py                  comando `livroponto` (gerar / criar-modelo / app)
 tests/                    testes automatizados (dados fictícios)
 exemplos/                 exemplo de JSON de feriados/recesso extras
 ```
