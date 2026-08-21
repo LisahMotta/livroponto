@@ -1,0 +1,160 @@
+"""Testes do app nativo (Tkinter). Pulados automaticamente se tkinter não
+estiver disponível (falta o pacote python3-tk no Linux) ou se não houver um
+display utilizável (defina DISPLAY, ou rode sob xvfb-run)."""
+from __future__ import annotations
+
+import pytest
+
+tk = pytest.importorskip("tkinter")
+
+from livroponto.models import DiaNaoLetivo, Pessoa, TipoServidor  # noqa: E402
+
+try:
+    _raiz_teste = tk.Tk()
+    _raiz_teste.destroy()
+except tk.TclError:
+    pytest.skip("Sem display utilizável para testes de Tkinter", allow_module_level=True)
+
+from livroponto.desktop.app import Aplicativo  # noqa: E402
+from livroponto.desktop.dialogs import DialogoExcecao, DialogoPessoa  # noqa: E402
+
+
+@pytest.fixture
+def app():
+    aplicativo = Aplicativo()
+    yield aplicativo
+    aplicativo.destroy()
+
+
+def _pessoa_exemplo(**overrides) -> Pessoa:
+    base = dict(
+        nome="Fulano Teste",
+        tipo=TipoServidor.ADMINISTRATIVO,
+        rg="1.111.111-1",
+        cargo="Agente de Organização Escolar",
+        jornada_semanal=40,
+        entrada="07:00",
+        saida="16:00",
+    )
+    base.update(overrides)
+    return Pessoa(**base)
+
+
+def test_janela_abre_com_abas(app):
+    assert app.title() == "Livro Ponto — editor"
+    assert app.tree_pessoas is not None
+    assert app.tree_excecoes is not None
+
+
+def test_adicionar_e_remover_pessoa_atualiza_lista(app):
+    app.dados.pessoas.append(_pessoa_exemplo())
+    app._atualizar_lista_pessoas()
+    assert len(app.tree_pessoas.get_children()) == 1
+
+    app.tree_pessoas.selection_set("0")
+    idx = app._pessoa_selecionada()
+    assert idx == 0
+    del app.dados.pessoas[idx]
+    app._atualizar_lista_pessoas()
+    assert len(app.tree_pessoas.get_children()) == 0
+
+
+def test_adicionar_excecao_atualiza_lista(app):
+    app.dados.dias_excecao.append(DiaNaoLetivo(mes=4, dia=19, tipo="PONTO_FACULTATIVO", descricao="Teste"))
+    app._atualizar_lista_excecoes()
+    assert len(app.tree_excecoes.get_children()) == 1
+
+
+def test_sincronizar_escola_le_campos_para_o_modelo(app):
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_municipio.set("Cidade Exemplo")
+    app.var_mes.set("Abril")
+    app.var_ano.set("2026")
+    app.var_uf.set("SP")
+
+    app._sincronizar_escola()
+
+    assert app.dados.escola.nome == "EE Exemplo Fictício"
+    assert app.dados.escola.municipio == "Cidade Exemplo"
+    assert app.dados.mes == 4
+    assert app.dados.ano == 2026
+    assert app.dados.uf == "SP"
+
+
+def test_salvar_e_reabrir_cadastro_xlsx(app, tmp_path):
+    app.dados.pessoas.append(_pessoa_exemplo())
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Ciclana Teste", tipo=TipoServidor.DOCENTE, disciplinas="HISTÓRIA"))
+    app.var_nome.set("EE Exemplo Fictício")
+    app._sincronizar_escola()
+
+    from livroponto.readers.template_reader import ler_modelo, salvar_modelo
+
+    caminho = tmp_path / "cadastro.xlsx"
+    salvar_modelo(app.dados, caminho)
+    recarregado = ler_modelo(caminho)
+    assert recarregado.escola.nome == "EE Exemplo Fictício"
+    assert len(recarregado.pessoas) == 2
+
+
+def test_gerar_pdf_a_partir_dos_dados_da_janela(app, tmp_path):
+    app.dados.pessoas.append(_pessoa_exemplo())
+    app.var_nome.set("EE Exemplo Fictício")
+    app._sincronizar_escola()
+
+    from livroponto.pdf.builder import gerar_pdf
+
+    caminho = tmp_path / "livro_ponto.pdf"
+    resultado = gerar_pdf(app.dados, caminho)
+    assert resultado.exists()
+    assert resultado.stat().st_size > 1000
+
+
+def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    dlg.var_nome.set("Novo Servidor")
+    dlg.var_rg.set("9.999.999-9")
+    dlg.var_jornada.set("40")
+    dlg._salvar()
+
+    assert dlg.resultado is not None
+    assert dlg.resultado.nome == "Novo Servidor"
+    assert dlg.resultado.jornada_semanal == 40.0
+
+
+def test_dialogo_pessoa_sem_nome_nao_gera_resultado(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+    monkeypatch.setattr("livroponto.desktop.dialogs.messagebox.showerror", lambda *a, **k: None)
+
+    dlg = DialogoPessoa(app)
+    dlg._salvar()
+
+    assert dlg.resultado is None
+    dlg.destroy()
+
+
+def test_dialogo_pessoa_edicao_preenche_campos_existentes(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    existente = _pessoa_exemplo(tipo=TipoServidor.DOCENTE, disciplinas="HISTÓRIA", nome="Existente")
+    dlg = DialogoPessoa(app, existente)
+
+    assert dlg.var_nome.get() == "Existente"
+    assert dlg.var_disciplinas.get() == "HISTÓRIA"
+
+    dlg._cancelar()
+    assert dlg.resultado is None
+
+
+def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoExcecao(app)
+    dlg.var_mes.set("4")
+    dlg.var_dia.set("19")
+    dlg.var_tipo.set("PONTO_FACULTATIVO")
+    dlg.var_descricao.set("Teste")
+    dlg._salvar()
+
+    assert dlg.resultado == DiaNaoLetivo(mes=4, dia=19, tipo="PONTO_FACULTATIVO", descricao="Teste")

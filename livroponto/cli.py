@@ -96,6 +96,18 @@ def _cmd_app(args: argparse.Namespace) -> None:
         pass
 
 
+def _cmd_desktop(args: argparse.Namespace) -> None:
+    try:
+        from .desktop.app import main as abrir_app_desktop
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Tkinter não está disponível neste Python (módulo 'tkinter' ausente). "
+            "No Windows/Mac ele já vem com o Python; no Linux instale o pacote "
+            "'python3-tk' da sua distribuição."
+        ) from exc
+    abrir_app_desktop()
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="livroponto",
@@ -141,8 +153,15 @@ def construir_parser() -> argparse.ArgumentParser:
     p_modelo.add_argument("--saida", default="modelo_livro_ponto.xlsx")
     p_modelo.set_defaults(func=_cmd_criar_modelo)
 
+    p_desktop = sub.add_parser(
+        "desktop",
+        help="Abre o app nativo (janela Tkinter, sem navegador nem servidor) para editar os dados e gerar o PDF.",
+    )
+    p_desktop.set_defaults(func=_cmd_desktop)
+
     p_app = sub.add_parser(
-        "app", help="Abre o app web (Streamlit) para editar os dados e gerar o PDF."
+        "app",
+        help="Abre o app web (Streamlit, no navegador) para editar os dados e gerar o PDF.",
     )
     p_app.add_argument("--porta", type=int, default=None, help="Porta do servidor (padrão do Streamlit).")
     p_app.set_defaults(func=_cmd_app)

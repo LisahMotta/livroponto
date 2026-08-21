@@ -4,6 +4,7 @@ encerramento — para administrativos e para docentes, cada grupo como um
 "livro" separado dentro do mesmo PDF."""
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -263,9 +264,15 @@ def gerar_pdf(
     caminho_saida: str | Path,
     uf: str | None = None,
 ) -> Path:
-    """Gera o PDF completo do Livro Ponto para o mês/ano de `config`."""
-    if not config.pessoas:
+    """Gera o PDF completo do Livro Ponto para o mês/ano de `config`.
+
+    Só entram no PDF as pessoas com `ponto=True` — quem tem `ponto=False`
+    fica no cadastro (para editar depois) mas não ganha folha impressa.
+    """
+    pessoas_com_ponto = [p for p in config.pessoas if p.ponto]
+    if not pessoas_com_ponto:
         raise ValueError("Nenhuma pessoa com ponto habilitado para gerar o livro.")
+    config = replace(config, pessoas=pessoas_com_ponto)
 
     dias = montar_calendario(
         config.ano, config.mes, uf=uf or config.uf, excecoes=config.dias_excecao

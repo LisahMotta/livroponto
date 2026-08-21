@@ -4,10 +4,12 @@ Aplicativo em Python que gera o **Livro Ponto** (registro de frequência) de
 uma escola em PDF, pronto para impressão: termo de abertura, uma folha por
 servidor com o calendário do mês para assinatura manual de entrada/saída, e
 termo de encerramento — para o pessoal administrativo e para o pessoal
-docente. Tem um **app web para editar os dados** (escola, servidores,
-feriados) direto no navegador, sem precisar mexer em planilha — a linha de
-comando (`livroponto gerar`) e a edição manual de um `.xlsx` continuam
-funcionando pra quem preferir.
+docente. Tem um **app nativo de desktop** (`livroponto desktop`, também
+disponível como `.exe` no Windows — veja [App nativo](#app-nativo-desktop))
+para editar os dados (escola, servidores, feriados) numa janela, sem
+navegador e sem servidor. Também tem um app web equivalente para quem
+preferir rodar no navegador, além da linha de comando (`livroponto gerar`)
+e da edição manual de um `.xlsx`.
 
 Foi construído a partir do modelo de planilha "LIVRO PONTO" (.xlsb) usado
 pelas escolas da rede estadual de São Paulo (SEDUC-SP), automatizando o que
@@ -16,12 +18,16 @@ feriados/fins de semana/recesso, e emitir uma folha por pessoa.
 
 ## O que o app faz
 
-- **Editor web** (`livroponto app`): edita escola, servidores/professores e
-  exceções de calendário em tabelas no navegador, e a partir daí baixa o
-  cadastro (`.xlsx`) e/ou o Livro Ponto (`.pdf`) — veja a seção
-  [App web](#app-web-editor) abaixo.
+- **App nativo de desktop** (`livroponto desktop`): edita escola,
+  servidores/professores e exceções de calendário numa janela de verdade
+  (Tkinter — sem navegador, sem servidor local), e a partir daí salva o
+  cadastro (`.xlsx`) e/ou gera o Livro Ponto (`.pdf`) — veja
+  [App nativo](#app-nativo-desktop) abaixo. No Windows também dá pra baixar
+  como `.exe` pronto, sem instalar Python.
+- **Editor web** (`livroponto app`, opcional): a mesma edição, só que no
+  navegador — veja [App web](#app-web-editor).
 - Lê os dados da escola e dos servidores de **duas fontes possíveis**
-  (usadas tanto pela linha de comando quanto pelo editor web):
+  (usadas pela linha de comando e pelos dois editores):
   1. A planilha legada `.xlsb` (abas `Escola`, `Funcionários`, `Professores`,
      `LP-Abertura`) — o mesmo modelo usado pelas escolas da rede estadual.
   2. Um modelo `.xlsx` simplificado (gerado pelo próprio app), para quem não
@@ -58,9 +64,39 @@ pip install -r requirements.txt
 pip install -e .        # opcional: registra o comando `livroponto`
 ```
 
-Requer Python 3.10+.
+Requer Python 3.10+. O app nativo (`livroponto desktop`) usa Tkinter, que já
+vem com o Python no Windows e no Mac; no Linux, se faltar, instale o pacote
+`python3-tk` da sua distribuição.
+
+## App nativo (desktop)
+
+```bash
+livroponto desktop
+```
+
+Abre uma janela de verdade (Tkinter) — nada de navegador, nada de servidor
+local — com abas:
+
+- **Escola**: nome, diretoria de ensino, endereço, município, mês/ano/UF/cidade;
+- **Servidores e professores**: lista com botões Adicionar/Editar/Remover (ou duplo-clique numa linha), abrindo um formulário para cada servidor;
+- **Feriados e exceções**: mesma ideia, para recesso/ponto facultativo/suspensão/sábado letivo.
+
+Barra de cima: **Novo**, **Abrir...** (carrega um `.xlsx` deste app ou um
+`.xlsb` legado), **Salvar cadastro...** (grava um `.xlsx` pra continuar
+editando depois) e **Gerar Livro Ponto (PDF)...**.
+
+### Windows: baixe o `.exe` pronto
+
+Quem só quer usar (sem instalar Python) pode baixar o executável já
+compilado: rode o workflow **Build Windows exe** em Actions deste
+repositório (aba *Actions* → *Build Windows exe* → *Run workflow*) e baixe
+o artifact `livroponto-windows-exe` gerado — é um único `livroponto.exe`
+(~90 MB, tudo empacotado). Dá duplo-clique e a janela abre direto.
 
 ## App web (editor)
+
+Alternativa ao app nativo acima, pra quem preferir rodar no navegador em
+vez de uma janela de desktop:
 
 ```bash
 livroponto app
@@ -152,12 +188,17 @@ livroponto/
     template_reader.py     lê/grava o modelo simplificado .xlsx
   pdf/
     builder.py              monta o PDF final (termos + folhas)
+  desktop/
+    app.py                   app nativo (Tkinter, janela de desktop)
+    dialogs.py                formulários modais (adicionar/editar pessoa e exceção)
   webapp/
-    app.py                   app Streamlit (editor web)
+    app.py                   app Streamlit (editor web, alternativa opcional)
     state.py                 conversão entre modelos e DataFrames das tabelas
-  cli.py                  comando `livroponto` (gerar / criar-modelo / app)
+  cli.py                  comando `livroponto` (gerar / criar-modelo / desktop / app)
 tests/                    testes automatizados (dados fictícios)
 exemplos/                 exemplo de JSON de feriados/recesso extras
+windows_launcher_desktop.py  ponto de entrada do .exe (empacota o app nativo)
+.github/workflows/build-windows-exe.yml  compila o .exe num runner Windows
 ```
 
 ## Testes
