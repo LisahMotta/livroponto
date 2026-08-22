@@ -1,10 +1,15 @@
-"""Testes do app web (Streamlit), usando o harness oficial de testes do
-Streamlit (`AppTest`) — roda o script sem precisar de navegador."""
+"""Testes do app web (Streamlit, opcional — `pip install .[web]`), usando o
+harness oficial de testes do Streamlit (`AppTest`), que roda o script sem
+precisar de navegador. Pulados automaticamente se streamlit não estiver
+instalado (não é uma dependência básica do pacote)."""
 from pathlib import Path
 
-from streamlit.testing.v1 import AppTest
+import pytest
 
-from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor
+streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+AppTest = streamlit_testing.AppTest
+
+from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor  # noqa: E402
 
 CAMINHO_APP = str(Path(__file__).resolve().parent.parent / "livroponto" / "webapp" / "app.py")
 

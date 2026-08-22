@@ -96,9 +96,11 @@ o artifact `livroponto-windows-exe` gerado — é um único `livroponto.exe`
 ## App web (editor)
 
 Alternativa ao app nativo acima, pra quem preferir rodar no navegador em
-vez de uma janela de desktop:
+vez de uma janela de desktop. Streamlit/pandas são opcionais (não vêm com
+`pip install .` sozinho, só com `requirements.txt` ou com o extra `web`):
 
 ```bash
+pip install -e ".[web]"   # ou: pip install -r requirements.txt
 livroponto app
 ```
 

@@ -13,9 +13,14 @@ dependencies = [
     "pyxlsb>=1.0.10",
     "reportlab>=4.0",
     "holidays>=0.45",
-    "streamlit>=1.30",
-    "pandas>=2.0",
 ]
+
+[project.optional-dependencies]
+# Só para quem for usar `livroponto app` (editor web, opcional). O app
+# nativo (`livroponto desktop`) e o `.exe` do Windows não precisam disso —
+# mantê-lo fora das dependências básicas evita puxar pandas/numpy à toa
+# num `pip install .` comum (e no empacotamento do .exe).
+web = ["streamlit>=1.30", "pandas>=2.0"]
 
 [project.scripts]
 livroponto = "livroponto.cli:main"

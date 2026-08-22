@@ -15,14 +15,12 @@ jobs:
 
       - name: Instalar dependências
         run: |
-          pip install openpyxl pyxlsb reportlab holidays
           pip install .
           pip install pyinstaller
 
       - name: Empacotar com PyInstaller (app nativo Tkinter)
         run: >
           pyinstaller --onefile --windowed --name livroponto --noconfirm
-          --collect-submodules livroponto
           --add-data "livroponto;livroponto"
           windows_launcher_desktop.py
 

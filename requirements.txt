@@ -2,5 +2,8 @@ openpyxl>=3.1
 pyxlsb>=1.0.10
 reportlab>=4.0
 holidays>=0.45
+
+# Só necessário para `livroponto app` (editor web opcional). O app nativo
+# (`livroponto desktop`) e o CLI (`livroponto gerar`) não precisam disso.
 streamlit>=1.30
 pandas>=2.0
