@@ -15,12 +15,13 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..calendario import nome_mes
-from ..models import Escola, LivroPontoConfig
+from ..models import Escola, LivroPontoConfig, TipoServidor
 from ..pdf.builder import gerar_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
@@ -73,6 +74,13 @@ class Aplicativo(tk.Tk):
         ttk.Button(barra, text="Salvar cadastro...", command=self._salvar_cadastro).pack(side="left")
         ttk.Separator(barra, orient="vertical").pack(side="left", fill="y", padx=10)
         ttk.Button(barra, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf).pack(side="left")
+        ttk.Label(barra, text="Incluir:").pack(side="left", padx=(10, 2))
+        self.var_incluir_administrativos = tk.BooleanVar(value=True)
+        self.var_incluir_docentes = tk.BooleanVar(value=True)
+        ttk.Checkbutton(barra, text="Administrativos", variable=self.var_incluir_administrativos).pack(
+            side="left", padx=(0, 6)
+        )
+        ttk.Checkbutton(barra, text="Docentes", variable=self.var_incluir_docentes).pack(side="left")
 
     def _construir_abas(self) -> None:
         notebook = ttk.Notebook(self)
@@ -304,13 +312,30 @@ class Aplicativo(tk.Tk):
 
     def _gerar_pdf(self) -> None:
         self._sincronizar_escola()
-        if not any(p.ponto for p in self.dados.pessoas):
+
+        tipos_incluidos = set()
+        if self.var_incluir_administrativos.get():
+            tipos_incluidos.add(TipoServidor.ADMINISTRATIVO)
+        if self.var_incluir_docentes.get():
+            tipos_incluidos.add(TipoServidor.DOCENTE)
+        if not tipos_incluidos:
             messagebox.showwarning(
                 "Nada para gerar",
-                "Adicione ao menos um servidor com \"Imprime folha de ponto\" marcado.",
+                "Marque ao menos um dos dois em \"Incluir\": Administrativos e/ou Docentes.",
                 parent=self,
             )
             return
+
+        pessoas_filtradas = [p for p in self.dados.pessoas if p.tipo in tipos_incluidos]
+        if not any(p.ponto for p in pessoas_filtradas):
+            messagebox.showwarning(
+                "Nada para gerar",
+                "Adicione ao menos um servidor (do(s) tipo(s) marcado(s) em \"Incluir\") "
+                "com \"Ponto?\" marcado.",
+                parent=self,
+            )
+            return
+
         nome_sugerido = f"livro_ponto_{self.dados.mes:02d}_{self.dados.ano}.pdf"
         caminho = filedialog.asksaveasfilename(
             title="Gerar Livro Ponto",
@@ -321,7 +346,7 @@ class Aplicativo(tk.Tk):
         if not caminho:
             return
         try:
-            gerar_pdf(self.dados, caminho)
+            gerar_pdf(replace(self.dados, pessoas=pessoas_filtradas), caminho)
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Erro ao gerar PDF", str(exc), parent=self)
             return

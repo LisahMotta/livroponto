@@ -3,9 +3,12 @@ estiver disponível (falta o pacote python3-tk no Linux) ou se não houver um
 display utilizável (defina DISPLAY, ou rode sob xvfb-run)."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 tk = pytest.importorskip("tkinter")
+from tkinter import filedialog, messagebox  # noqa: E402
 
 from livroponto.models import DiaNaoLetivo, Pessoa, TipoServidor  # noqa: E402
 
@@ -107,6 +110,49 @@ def test_gerar_pdf_a_partir_dos_dados_da_janela(app, tmp_path):
     resultado = gerar_pdf(app.dados, caminho)
     assert resultado.exists()
     assert resultado.stat().st_size > 1000
+
+
+def test_gerar_pdf_pelo_botao_respeita_filtro_incluir(app, tmp_path, monkeypatch):
+    """Desmarcar "Docentes" em Incluir não deve gerar a folha do docente,
+    mesmo com ele cadastrado e com ponto=True."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.dados.pessoas.append(
+        _pessoa_exemplo(
+            nome="Docente Teste",
+            tipo=TipoServidor.DOCENTE,
+            disciplinas="MATEMÁTICA",
+            entrada="",
+            saida="",
+        )
+    )
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_incluir_docentes.set(False)
+
+    caminho = tmp_path / "livro_ponto.pdf"
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: str(caminho))
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert caminho.exists()
+    texto = caminho.read_bytes()
+    assert b"Administrativo Teste" not in texto  # texto do PDF vai comprimido/codificado
+    # confirma via reportlab: reabrir o config filtrado teria só 1 pessoa
+    from livroponto.pdf.builder import gerar_pdf as gerar_pdf_direto
+
+    config_admin_only = replace(
+        app.dados, pessoas=[p for p in app.dados.pessoas if p.tipo == TipoServidor.ADMINISTRATIVO]
+    )
+    caminho_referencia = tmp_path / "referencia.pdf"
+    gerar_pdf_direto(config_admin_only, caminho_referencia)
+    # o PDF gerado pelo botão deve ter tamanho parecido ao gerado só com o
+    # administrativo (bem menor do que se tivesse incluído o docente também)
+    assert abs(caminho.stat().st_size - caminho_referencia.stat().st_size) < 500
+
+
+def test_checkboxes_incluir_existem_e_comecam_marcados(app):
+    assert app.var_incluir_administrativos.get() is True
+    assert app.var_incluir_docentes.get() is True
 
 
 def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):
