@@ -21,7 +21,7 @@ jobs:
 
       - name: Empacotar com PyInstaller (app nativo Tkinter)
         run: >
-          pyinstaller --onefile --name livroponto --noconfirm
+          pyinstaller --onefile --windowed --name livroponto --noconfirm
           --collect-submodules livroponto
           --add-data "livroponto;livroponto"
           windows_launcher_desktop.py
