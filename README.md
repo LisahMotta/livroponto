@@ -1,10 +1,14 @@
 # livroponto
 
 Aplicativo em Python que gera o **Livro Ponto** (registro de frequência) de
-uma escola em PDF, pronto para impressão: termo de abertura, uma folha por
-servidor com o calendário do mês para assinatura manual de entrada/saída, e
-termo de encerramento — para o pessoal administrativo e para o pessoal
-docente. Tem um **app nativo de desktop** (`livroponto desktop`, também
+uma escola em PDF, pronto para impressão: termo de abertura, para cada
+servidor a folha de ponto (calendário do mês para assinatura manual de
+entrada/saída) seguida da folha de consolidação (o "verso"), e termo de
+encerramento — para o pessoal administrativo e para o pessoal docente. O
+layout segue o modelo real da planilha original (cabeçalho "GOVERNO DO
+ESTADO DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO", legenda de cores
+recesso/não letivo/feriado, os mesmos rótulos de campo). Tem um **app
+nativo de desktop** (`livroponto desktop`, também
 disponível como `.exe` no Windows — veja [App nativo](#app-nativo-desktop))
 para editar os dados (escola, servidores, feriados) numa janela, sem
 navegador e sem servidor. Também tem um app web equivalente para quem
@@ -37,15 +41,24 @@ feriados/fins de semana/recesso, e emitir uma folha por pessoa.
   - sábados e domingos;
   - exceções extras informadas manualmente em JSON (recesso escolar, ponto
     facultativo, suspensão de atividades, ou um sábado letivo de reposição).
-- Gera um **PDF** com:
+- Gera um **PDF** no layout do modelo original (abas `Livro-Adm` e
+  `Livro-Adm-Cons` da planilha SEDUC-SP), com:
   - termo de abertura e termo de encerramento (um par para o livro dos
     administrativos, outro para o dos docentes — só é gerado o grupo que
     tiver gente);
-  - uma folha por servidor, com cabeçalho (nome, RG, cargo/função, jornada,
-    horário — ou disciplina(s)/categoria no caso de docentes) e uma tabela
-    com todos os dias do mês, marcando os dias não úteis e deixando em
-    branco os campos de hora/assinatura de entrada e saída para
-    preenchimento manual.
+  - para cada servidor, a **folha de ponto**: cabeçalho "GOVERNO DO ESTADO
+    DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO", legenda de cores
+    (recesso/não letivo/feriado/ponto facultativo), dados do servidor
+    (RG, cargo/função, jornada, horário — ou disciplina(s)/categoria no
+    caso de docentes), e uma tabela com todos os dias do mês (nome
+    completo do dia da semana, os dias não úteis já coloridos e
+    identificados), com campos em branco de hora/assinatura de entrada e
+    saída, observações e **visto do superior imediato por dia** para
+    preenchimento manual;
+  - seguida da **folha de consolidação** (o verso): mesmo cabeçalho,
+    título "CONSOLIDAÇÃO", um resumo do mês (dias úteis, feriados,
+    recesso etc.), espaço pautado para anotações, e o fecho com data e
+    assinatura do superior imediato.
 
 ## O que **não** está implementado (fora do escopo desta v1)
 
