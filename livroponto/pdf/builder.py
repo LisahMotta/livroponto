@@ -1,15 +1,14 @@
 """Monta o PDF do Livro Ponto: termo de abertura, para cada servidor uma
-folha de ponto (calendário do mês, para assinatura manual de entrada/saída)
-seguida da folha de consolidação (verso), e termo de encerramento — para
-administrativos e para docentes, cada grupo como um "livro" separado dentro
-do mesmo PDF.
+folha de ponto seguida da folha de consolidação (verso), e termo de
+encerramento — para administrativos e para docentes, cada grupo como um
+"livro" separado dentro do mesmo PDF.
 
-O layout da folha de ponto e da folha de consolidação segue o modelo real
-usado pela rede estadual de SP (abas "Livro-Adm" e "Livro-Adm-Cons" da
-planilha original): cabeçalho "GOVERNO DO ESTADO DE SÃO PAULO / SECRETARIA
-DE ESTADO DA EDUCAÇÃO", legenda de cores (recesso/não letivo/feriado), os
-mesmos rótulos de campo, e uma coluna de "Visto do Superior Imediato" por
-dia (não só uma linha única no fim da folha)."""
+O layout da folha de ponto e da folha de consolidação replica o formulário
+oficial realmente usado (brasão do Estado de São Paulo, cabeçalho "GOVERNO
+DO ESTADO DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO", os mesmos
+campos/rótulos, a tabela de 1 a 31 sem marcação automática de feriado/fim de
+semana — o preenchimento desses dias é manual, como no formulário original
+— e a seção "INFORMAÇÕES FINANCEIRAS" no rodapé)."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -20,6 +19,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
+    Image,
     KeepTogether,
     PageBreak,
     Paragraph,
@@ -37,47 +37,17 @@ _ROTULO_TIPO = {
     TipoServidor.DOCENTE: "DO PESSOAL DOCENTE",
 }
 
-_DIAS_SEMANA_COMPLETO = ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "DOMINGO"]
-
-_SIGLA_TIPO = {
-    "FERIADO": "FERIADO",
-    "RECESSO": "RECESSO",
-    "PONTO_FACULTATIVO": "PONTO FACULTATIVO",
-    "SUSPENSAO": "NÃO LETIVO",
-    "SABADO": "SÁBADO",
-    "DOMINGO": "DOMINGO",
-}
-
-# Cor de fundo de cada tipo de dia na tabela — mesma ideia da legenda por
-# cor (recesso/não letivo/feriado) da planilha original.
-_COR_SITUACAO = {
-    "FERIADO": colors.Color(1, 0.85, 0.85),
-    "RECESSO": colors.Color(0.83, 0.90, 1),
-    "SUSPENSAO": colors.Color(0.90, 0.90, 0.90),
-    "PONTO_FACULTATIVO": colors.Color(1, 0.96, 0.78),
-    "SABADO": colors.whitesmoke,
-    "DOMINGO": colors.whitesmoke,
-}
-
-_LEGENDA_ITENS = [
-    ("RECESSO", _COR_SITUACAO["RECESSO"]),
-    ("NÃO LETIVO", _COR_SITUACAO["SUSPENSAO"]),
-    ("FERIADO", _COR_SITUACAO["FERIADO"]),
-    ("PONTO FACULTATIVO", _COR_SITUACAO["PONTO_FACULTATIVO"]),
-]
-
-_COL_WIDTHS = [
-    0.9 * cm,  # Dia
-    2.3 * cm,  # Semana
-    1.5 * cm,  # Entrada - Hora
-    3.3 * cm,  # Entrada - Assinatura
-    1.5 * cm,  # Saída - Hora
-    3.3 * cm,  # Saída - Assinatura
-    2.9 * cm,  # Observações
-    2.9 * cm,  # Visto do Superior Imediato
-]
-_MARGEM = 1.2 * cm
+_MARGEM = 1.0 * cm
+_LARGURA_CONTEUDO = A4[0] - 2 * _MARGEM
 _LIMITE_OBSERVACAO = 170
+_LOGO_SP = Path(__file__).resolve().parent / "assets" / "brasao_sp.png"
+
+# Proporções de coluna da tabela de dias (Dia | Entrada Hora/Assinatura |
+# Saída Hora/Assinatura | Observações | Visto), tiradas do formulário real.
+_FRACOES_TABELA_DIAS = [0.0438, 0.0808, 0.1639, 0.0808, 0.1639, 0.3025, 0.1639]
+
+# Proporções de coluna da seção "Informações financeiras" (6 colunas).
+_FRACOES_FINANCEIRO = [0.1573, 0.2043, 0.1195, 0.2043, 0.2043, 0.1102]
 
 
 def _truncar(texto: str, limite: int = _LIMITE_OBSERVACAO) -> str:
@@ -96,14 +66,16 @@ def _styles():
     ss.add(ParagraphStyle("Corpo", parent=ss["Normal"], fontSize=11, leading=16))
     ss.add(ParagraphStyle("CorpoCentro", parent=ss["Normal"], fontSize=11, leading=16, alignment=1))
     ss.add(ParagraphStyle("Rotulo", parent=ss["Normal"], fontSize=9, textColor=colors.grey))
-    ss.add(ParagraphStyle("Legenda", parent=ss["Normal"], fontSize=7.5))
-    ss.add(ParagraphStyle("CelSit", parent=ss["Normal"], fontSize=6.8, leading=8))
     ss.add(
         ParagraphStyle(
-            "GovernoTitulo", parent=ss["Normal"], fontSize=10.5, alignment=1, fontName="Helvetica-Bold"
+            "GovernoTitulo", parent=ss["Normal"], fontSize=8, alignment=1, fontName="Helvetica-Bold", leading=10
         )
     )
-    ss.add(ParagraphStyle("Campo", parent=ss["Normal"], fontSize=9.3, leading=13))
+    ss.add(ParagraphStyle("PagRotulo", parent=ss["Normal"], fontSize=9, alignment=2))
+    ss.add(ParagraphStyle("Campo", parent=ss["Normal"], fontSize=8, leading=11))
+    ss.add(ParagraphStyle("CelTabela", parent=ss["Normal"], fontSize=8, alignment=1, leading=9))
+    ss.add(ParagraphStyle("CelTabelaPequena", parent=ss["Normal"], fontSize=7.3, alignment=1, leading=8.3))
+    ss.add(ParagraphStyle("ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold"))
     return ss
 
 
@@ -120,42 +92,6 @@ def _cabecalho_escola(config: LivroPontoConfig, styles) -> list:
     if detalhes:
         linhas.append(Paragraph(" | ".join(detalhes), styles["Rotulo"]))
     return linhas
-
-
-def _cabecalho_governo(config: LivroPontoConfig, styles) -> list:
-    """Cabeçalho padrão da folha de ponto e da folha de consolidação,
-    igual ao das abas Livro-Adm/Livro-Adm-Cons da planilha original."""
-    escola = config.escola
-    elementos = [
-        Paragraph("GOVERNO DO ESTADO DE SÃO PAULO", styles["GovernoTitulo"]),
-        Paragraph("SECRETARIA DE ESTADO DA EDUCAÇÃO", styles["GovernoTitulo"]),
-        Spacer(1, 0.15 * cm),
-    ]
-
-    linha_legenda = []
-    estilo_legenda = [("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 1)]
-    for i, (rotulo, cor) in enumerate(_LEGENDA_ITENS):
-        col = i * 2
-        linha_legenda.append("")
-        linha_legenda.append(Paragraph(rotulo, styles["Legenda"]))
-        estilo_legenda.append(("BACKGROUND", (col, 0), (col, 0), cor))
-        estilo_legenda.append(("BOX", (col, 0), (col, 0), 0.4, colors.black))
-    tabela_legenda = Table(
-        [linha_legenda],
-        colWidths=[0.35 * cm, 2.6 * cm] * len(_LEGENDA_ITENS),
-    )
-    tabela_legenda.setStyle(TableStyle(estilo_legenda))
-    elementos.append(tabela_legenda)
-    elementos.append(Spacer(1, 0.1 * cm))
-    elementos.append(Paragraph(f"<b>Unidade:</b> {escola.nome}", styles["Campo"]))
-    elementos.append(
-        Paragraph(
-            f"<b>REGISTRO DE PONTO — Mês/Ano:</b> {nome_mes(config.mes).capitalize()} / {config.ano}",
-            styles["Campo"],
-        )
-    )
-    elementos.append(Spacer(1, 0.2 * cm))
-    return elementos
 
 
 def _termo(
@@ -213,170 +149,270 @@ def _termo(
     return elementos
 
 
-def _campos_pessoa(pessoa: Pessoa, styles) -> list:
-    """Campos de identificação do servidor, nos mesmos rótulos e na mesma
-    ordem da aba Livro-Adm original."""
+def _col_widths(fracoes: list[float]) -> list[float]:
+    return [f * _LARGURA_CONTEUDO for f in fracoes]
+
+
+def _cabecalho_formulario(config: LivroPontoConfig, styles, mostrar_pag: bool) -> Table:
+    """Cabeçalho do formulário oficial: brasão à esquerda, "GOVERNO DO
+    ESTADO DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO / Unidade: ... /
+    Registro de Ponto Mês/Ano: ..." ao centro, e "PAG: ____" no canto
+    superior direito (só na folha de ponto, não no verso)."""
+    escola = config.escola
+    texto_central = Paragraph(
+        "GOVERNO DO ESTADO DE SÃO PAULO<br/>"
+        "SECRETARIA DE ESTADO DA EDUCAÇÃO<br/>"
+        f"UNIDADE: {escola.nome}<br/>"
+        f"REGISTRO DE PONTO MÊS/ANO: {nome_mes(config.mes).upper()} DE {config.ano}",
+        styles["GovernoTitulo"],
+    )
+    pag = Paragraph("PAG: ____", styles["PagRotulo"]) if mostrar_pag else ""
+
+    try:
+        logo = Image(str(_LOGO_SP), width=1.55 * cm, height=1.7 * cm)
+    except Exception:  # noqa: BLE001 — sem o brasão, segue sem imagem
+        logo = ""
+
+    largura_logo = 2.0 * cm
+    largura_pag = 2.8 * cm
+    largura_central = _LARGURA_CONTEUDO - largura_logo - largura_pag
+
+    # Numa célula mesclada o reportlab exibe o conteúdo da célula âncora
+    # (topo/esquerda do SPAN) — por isso a logo vai na linha 0, não na 1.
+    tabela = Table(
+        [[logo, pag], ["", texto_central]],
+        colWidths=[largura_logo, largura_central + largura_pag],
+        rowHeights=[0.5 * cm, 1.9 * cm],
+    )
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("SPAN", (0, 0), (0, 1)),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LINEBELOW", (0, 0), (0, 0), 0.6, colors.black),
+            ]
+        )
+    )
+    return tabela
+
+
+def _linha_campo(rotulo: str, valor: str) -> str:
+    return f"<b>{rotulo}:</b> {valor}" if valor else f"<b>{rotulo}:</b>"
+
+
+def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
+    """Bloco "SERVIDOR / CARGO / JORNADA / HORÁRIO / INTERVALO", nos mesmos
+    rótulos e na mesma ordem do formulário original."""
     P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
+
     linhas = [
-        P(f"<b>SERVIDOR:</b> {pessoa.nome} &nbsp;&nbsp;&nbsp; <b>RG:</b> {pessoa.rg}"),
-        P(f"<b>CARGO/FUNÇÃO:</b> {pessoa.cargo}"),
+        [P(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", pessoa.rg))],
+        [P(_linha_campo("CARGO/FUNÇÃO", pessoa.cargo)), ""],
     ]
     if pessoa.tipo == TipoServidor.ADMINISTRATIVO:
-        jornada_txt = f"{pessoa.jornada_semanal:g}" if pessoa.jornada_semanal else "____"
+        jornada_txt = f"{pessoa.jornada_semanal:g} Horas" if pessoa.jornada_semanal else ""
         linhas.append(
-            P(
-                f"<b>JORNADA DE TRABALHO:</b> {jornada_txt} HORAS/SEMANAIS "
-                f"&nbsp;&nbsp;&nbsp; <b>REGIME DE PLANTÃO:</b> _______________"
-            )
+            [P(_linha_campo("JORNADA DE TRABALHO", jornada_txt)), P("<b>REGIME DE PLANTÃO:</b>")]
         )
-        horario = pessoa.horario_trabalho or "DAS ______ ÀS ______"
-        linhas.append(P(f"<b>HORÁRIO DE TRABALHO:</b> {horario}"))
-        intervalo = pessoa.intervalo or "DAS ______ ÀS ______"
+        linhas.append([P(f"<b>HORÁRIO DE TRABALHO:</b> {pessoa.horario_trabalho}"), ""])
         linhas.append(
-            P(
-                f"<b>INTERVALO DE ALMOÇO E DESCANSO:</b> {intervalo} "
-                f"&nbsp;&nbsp;&nbsp; <b>HORÁRIO DE ESTUDANTE:</b> _______________"
-            )
+            [
+                P(f"<b>INTERVALO DE ALMOÇO E DESCANSO:</b> {pessoa.intervalo}"),
+                P("<b>HORÁRIO DE ESTUDANTE (SIM/NÃO):</b>"),
+            ]
         )
     else:
-        if pessoa.categoria:
-            linhas.append(P(f"<b>CATEGORIA:</b> {pessoa.categoria}"))
-        if pessoa.disciplinas:
-            linhas.append(P(f"<b>DISCIPLINA(S):</b> {_truncar(pessoa.disciplinas, 90)}"))
-        if pessoa.jornada_codigo:
-            linhas.append(P(f"<b>JORNADA:</b> {pessoa.jornada_codigo}"))
+        linhas.append([P(_linha_campo("CATEGORIA", pessoa.categoria)), ""])
+        linhas.append(
+            [
+                P(_linha_campo("DISCIPLINA(S)", _truncar(pessoa.disciplinas, 80))),
+                P(_linha_campo("JORNADA", pessoa.jornada_codigo)),
+            ]
+        )
         if pessoa.observacoes:
-            linhas.append(P(f"<b>OBSERVAÇÕES:</b> {_truncar(pessoa.observacoes)}"))
-    return linhas
+            linhas.append([P(_linha_campo("OBSERVAÇÕES", _truncar(pessoa.observacoes))), ""])
+
+    largura_esq = 0.722 * _LARGURA_CONTEUDO
+    tabela = Table(linhas, colWidths=[largura_esq, _LARGURA_CONTEUDO - largura_esq])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.6, colors.black),
+            ]
+        )
+    )
+    return tabela
 
 
-def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> list:
-    elementos = _cabecalho_governo(config, styles)
-    elementos += _campos_pessoa(pessoa, styles)
-    elementos.append(Spacer(1, 0.2 * cm))
-
-    # Nas colunas que mesclam as duas linhas do cabeçalho (Dia, Semana,
-    # Observações, Visto), o texto tem que ir na linha de cima: numa célula
-    # mesclada o reportlab exibe o conteúdo da célula âncora (topo/esquerda).
-    linha_grupo = ["Dia", "Semana", "ENTRADA", "", "SAÍDA", "", "Observações", "Visto do\nSuperior Imediato"]
-    cabecalho = ["", "", "Hora", "Assinatura", "Hora", "Assinatura", "", ""]
+def _tabela_dias(styles) -> Table:
+    """A grade "Dia | Entrada | Saída | Observações | Visto do superior
+    imediato", com as 31 linhas do formulário — sem marcação automática de
+    feriado/fim de semana, para preenchimento manual como no original."""
+    linha_grupo = ["Dia", "Entrada", "", "Saída", "", "Observações", "Visto do superior\nimediato"]
+    cabecalho = ["", "Hora", "Assinatura", "Hora", "Assinatura", "", ""]
     dados = [linha_grupo, cabecalho]
     estilos_extra = [
-        ("SPAN", (2, 0), (3, 0)),
-        ("SPAN", (4, 0), (5, 0)),
+        ("SPAN", (1, 0), (2, 0)),
+        ("SPAN", (3, 0), (4, 0)),
         ("SPAN", (0, 0), (0, 1)),
-        ("SPAN", (1, 0), (1, 1)),
+        ("SPAN", (5, 0), (5, 1)),
         ("SPAN", (6, 0), (6, 1)),
-        ("SPAN", (7, 0), (7, 1)),
     ]
+    for _dia in range(1, 32):
+        dados.append([str(_dia), "", "", "", "", "", ""])
 
-    for i, dia in enumerate(dias, start=2):
-        semana_completa = _DIAS_SEMANA_COMPLETO[dia.data.weekday()]
-        if dia.e_dia_normal:
-            dados.append([str(dia.dia), semana_completa, "", "", "", "", "", ""])
-        else:
-            sigla = _SIGLA_TIPO.get(dia.tipo, dia.tipo)
-            texto_situacao = f"{sigla} - {dia.rotulo}" if dia.rotulo and dia.rotulo != sigla else sigla
-            dados.append(
-                [str(dia.dia), semana_completa, Paragraph(texto_situacao, styles["CelSit"]), "", "", "", "", ""]
-            )
-            estilos_extra.append(("SPAN", (2, i), (5, i)))
-            cor = _COR_SITUACAO.get(dia.tipo, colors.whitesmoke)
-            estilos_extra.append(("BACKGROUND", (0, i), (5, i), cor))
+    tabela = Table(dados, colWidths=_col_widths(_FRACOES_TABELA_DIAS), repeatRows=2)
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("BACKGROUND", (0, 0), (-1, 1), colors.lightgrey),
+            ]
+            + estilos_extra
+        )
+    )
+    return tabela
 
-    tabela = Table(dados, colWidths=_COL_WIDTHS, repeatRows=2)
-    estilo = TableStyle(
+
+def _secao_financeira(styles) -> Table:
+    """Rodapé "INFORMAÇÕES FINANCEIRAS" (férias, GTN, ACA, serviço
+    extraordinário, substituição eventual, vale transporte) — campos em
+    branco para preenchimento manual, igual ao formulário original."""
+    P = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
+    dados = [
+        ["INFORMAÇÕES FINANCEIRAS", "", "", "", "", ""],
         [
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
-            ("FONTSIZE", (0, 0), (-1, -1), 7.3),
-            ("FONTSIZE", (0, 0), (-1, 1), 7.8),
-            ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ("BACKGROUND", (0, 0), (-1, 1), colors.lightgrey),
-        ]
-        + estilos_extra
-    )
-    tabela.setStyle(estilo)
-    elementos.append(tabela)
-    return elementos
-
-
-def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> list:
-    """Verso da folha de ponto: mesmo cabeçalho, título CONSOLIDAÇÃO, um
-    resumo do mês (dias úteis/não úteis) e o fecho com data e assinatura do
-    superior imediato — igual à aba Livro-Adm-Cons da planilha original."""
-    elementos = _cabecalho_governo(config, styles)
-    elementos.append(Paragraph(f"SERVIDOR: {pessoa.nome}", styles["Campo"]))
-    elementos.append(Spacer(1, 0.4 * cm))
-    elementos.append(Paragraph("CONSOLIDAÇÃO", styles["Heading2"]))
-    elementos.append(Spacer(1, 0.3 * cm))
-
-    contagem: dict[str, int] = {}
-    for dia in dias:
-        contagem[dia.tipo] = contagem.get(dia.tipo, 0) + 1
-    dias_uteis = contagem.get("UTIL", 0)
-    dias_nao_uteis = len(dias) - dias_uteis
-
-    resumo = [
-        ["Dias do mês", str(len(dias))],
-        ["Dias úteis (sujeitos a registro de ponto)", str(dias_uteis)],
-        ["Sábados/domingos", str(contagem.get("SABADO", 0) + contagem.get("DOMINGO", 0))],
-        ["Feriados", str(contagem.get("FERIADO", 0))],
+            P("<b>FÉRIAS</b>"),
+            P("DE ___/___/___<br/>ATÉ ___/___/___"),
+            P("MÉDIA DE GTN"),
+            P("<b>ACA</b>"),
+            P("DE ___/___/___<br/>ATÉ ___/___/___"),
+            P("QUANTIDADE"),
+        ],
+        [
+            P("<b>GTN</b>"),
+            P("DE ___/___/___<br/>ATÉ ___/___/___"),
+            P("20% &nbsp;&nbsp; 10%"),
+            P("SERVIÇO<br/>EXTRAORDINÁRIO"),
+            P("DE ___/___/___<br/>ATÉ ___/___/___"),
+            P("QUANTIDADE"),
+        ],
+        [
+            P("<b>SUBSTITUIÇÃO<br/>EVENTUAL</b>"),
+            P("PERÍODO<br/>___/___/___ ATÉ ___/___/___"),
+            "",
+            P("CARGO/FUNÇÃO<br/>SUBSTITUÍDA"),
+            P("VALE TRANSPORTE - CLT (SIM/NÃO)"),
+            "",
+        ],
     ]
-    if contagem.get("RECESSO"):
-        resumo.append(["Recesso escolar", str(contagem["RECESSO"])])
-    if contagem.get("PONTO_FACULTATIVO"):
-        resumo.append(["Ponto facultativo", str(contagem["PONTO_FACULTATIVO"])])
-    if contagem.get("SUSPENSAO"):
-        resumo.append(["Suspensão de atividades (não letivo)", str(contagem["SUSPENSAO"])])
-    resumo.append(["Total de dias não úteis", str(dias_nao_uteis)])
-
-    tabela_resumo = Table(resumo, colWidths=[10 * cm, 3 * cm])
-    tabela_resumo.setStyle(
+    larguras = _col_widths(_FRACOES_FINANCEIRO)
+    tabela = Table(dados, colWidths=larguras)
+    tabela.setStyle(
         TableStyle(
             [
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("ALIGN", (1, 0), (1, -1), "CENTER"),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("BACKGROUND", (0, -1), (-1, -1), colors.whitesmoke),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("GRID", (0, 1), (-1, -1), 0.4, colors.black),
+                ("BOX", (0, 0), (-1, 0), 0.4, colors.black),
+                ("SPAN", (0, 0), (-1, 0)),
+                ("SPAN", (1, 3), (2, 3)),
+                ("SPAN", (4, 3), (5, 3)),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("FONTSIZE", (0, 0), (-1, 0), 8.5),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 1), (-1, -1), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
         )
     )
-    elementos.append(tabela_resumo)
+    return tabela
+
+
+def _rodape_assinaturas(styles) -> Table:
+    linhas = [
+        ["_" * 42, "_" * 48, ""],
+        [
+            Paragraph("ASSINATURA DO SERVIDOR", styles["CelTabelaPequena"]),
+            Paragraph("ASSINATURA DO SUPERIOR IMEDIATO", styles["CelTabelaPequena"]),
+            Paragraph("DATA: ___/___/_____", styles["Campo"]),
+        ],
+    ]
+    tabela = Table(linhas, colWidths=[_LARGURA_CONTEUDO * 0.4, _LARGURA_CONTEUDO * 0.4, _LARGURA_CONTEUDO * 0.2])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (1, -1), "CENTER"),
+                ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    return tabela
+
+
+def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Table:
+    conteudo = [
+        [_cabecalho_formulario(config, styles, mostrar_pag=True)],
+        [_bloco_dados_pessoa(pessoa, styles)],
+        [_tabela_dias(styles)],
+        [_secao_financeira(styles)],
+        [Spacer(1, 0.4 * cm)],
+        [_rodape_assinaturas(styles)],
+    ]
+    outer = Table(conteudo, colWidths=[_LARGURA_CONTEUDO])
+    outer.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return outer
+
+
+def _folha_consolidacao(config: LivroPontoConfig, styles) -> list:
+    """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
+    CONSOLIDAÇÃO, espaço pautado para anotações manuscritas, e o fecho com
+    data e assinatura do superior imediato — igual ao formulário original."""
+    elementos = [_cabecalho_formulario(config, styles, mostrar_pag=False)]
+    elementos.append(Spacer(1, 0.3 * cm))
+    elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
+    elementos.append(Spacer(1, 0.25 * cm))
+
+    linhas_pautadas = [[""] for _ in range(25)]
+    tabela_pauta = Table(linhas_pautadas, colWidths=[_LARGURA_CONTEUDO], rowHeights=[0.72 * cm] * 25)
+    tabela_pauta.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.black)]))
+    elementos.append(tabela_pauta)
+
     elementos.append(Spacer(1, 0.6 * cm))
-    elementos.append(
-        Paragraph("Observações / anotações do superior imediato:", styles["Campo"])
-    )
-    elementos.append(Spacer(1, 0.1 * cm))
-
-    # Espaço em branco pautado, igual ao usado na planilha original para
-    # anotações manuscritas.
-    linhas_em_branco = [[""] for _ in range(10)]
-    tabela_branco = Table(linhas_em_branco, colWidths=[17.5 * cm], rowHeights=[0.9 * cm] * 10)
-    tabela_branco.setStyle(
-        TableStyle(
-            [
-                ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.grey),
-            ]
-        )
-    )
-    elementos.append(tabela_branco)
-
-    elementos.append(Spacer(1, 1.0 * cm))
-    elementos.append(Paragraph("Data:  ____ / ____ / ________", styles["Corpo"]))
-    elementos.append(Spacer(1, 1.6 * cm))
-    elementos.append(Paragraph("_" * 55, styles["CorpoCentro"]))
-    elementos.append(Paragraph("Assinatura do Superior Imediato ou Responsável", styles["CorpoCentro"]))
+    elementos.append(Paragraph("DATA:  ___/___/_____", styles["Campo"]))
+    elementos.append(Spacer(1, 0.9 * cm))
+    elementos.append(Paragraph("_" * 50, styles["CorpoCentro"]))
+    elementos.append(Paragraph("Assinatura do Superior Imediato", styles["CorpoCentro"]))
+    elementos.append(Spacer(1, 0.2 * cm))
+    elementos.append(Paragraph("Verso", ParagraphStyle("VersoTxt", parent=styles["Normal"], alignment=2)))
     return elementos
 
 
-def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> list:
+def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, styles) -> list:
     pessoas = config.pessoas_por_tipo(tipo)
     if not pessoas:
         return []
@@ -388,9 +424,9 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
     elementos.append(PageBreak())
 
     for pessoa in pessoas:
-        elementos.append(KeepTogether(_folha_ponto(config, pessoa, dias, styles)))
+        elementos.append(_folha_ponto(config, pessoa, styles))
         elementos.append(PageBreak())
-        elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, dias, styles)))
+        elementos.append(KeepTogether(_folha_consolidacao(config, styles)))
         elementos.append(PageBreak())
 
     elementos += _termo(config, tipo, numero_folhas, encerramento=True, styles=styles)
@@ -413,9 +449,11 @@ def gerar_pdf(
         raise ValueError("Nenhuma pessoa com ponto habilitado para gerar o livro.")
     config = replace(config, pessoas=pessoas_com_ponto)
 
-    dias = montar_calendario(
-        config.ano, config.mes, uf=uf or config.uf, excecoes=config.dias_excecao
-    )
+    # O calendário do mês só é usado para validar mês/ano/feriados
+    # configurados (ex.: erros no UF); a folha de ponto em si não marca
+    # feriados/fins de semana automaticamente — replica o formulário
+    # original, preenchido à mão.
+    montar_calendario(config.ano, config.mes, uf=uf or config.uf, excecoes=config.dias_excecao)
     styles = _styles()
 
     doc = SimpleDocTemplate(
@@ -429,8 +467,8 @@ def gerar_pdf(
     )
 
     elementos: list = []
-    elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, dias, styles)
-    elementos += _bloco_tipo(config, TipoServidor.DOCENTE, dias, styles)
+    elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, styles)
+    elementos += _bloco_tipo(config, TipoServidor.DOCENTE, styles)
 
     if elementos and isinstance(elementos[-1], PageBreak):
         elementos.pop()

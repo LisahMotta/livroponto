@@ -28,5 +28,8 @@ livroponto = "livroponto.cli:main"
 [tool.setuptools.packages.find]
 include = ["livroponto*"]
 
+[tool.setuptools.package-data]
+livroponto = ["pdf/assets/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
