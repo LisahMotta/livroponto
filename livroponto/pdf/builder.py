@@ -412,21 +412,328 @@ def _folha_consolidacao(config: LivroPontoConfig, styles) -> list:
     return elementos
 
 
+_LARGURA_FREQ_PRINCIPAL = 0.70 * _LARGURA_CONTEUDO
+_LARGURA_FREQ_PAINEL = _LARGURA_CONTEUDO - _LARGURA_FREQ_PRINCIPAL
+# 1 coluna larga (Assinaturas) + 22 colunas estreitas e iguais (Dia, Semana,
+# Jornada Dia, Subst. Eventual, Reposição, Total Geral, 1ª a 11ª aula,
+# U.E. Local, Geral, Natureza, Saldo Pendente, Falta M. Parcial).
+_LARGURA_FREQ_ESTREITA = _LARGURA_FREQ_PRINCIPAL * 0.0354
+_LARGURA_FREQ_ASSINATURAS = _LARGURA_FREQ_PRINCIPAL - 22 * _LARGURA_FREQ_ESTREITA
+_COLS_FREQ = [_LARGURA_FREQ_ASSINATURAS] + [_LARGURA_FREQ_ESTREITA] * 22
+
+
+def _cabecalho_frequencia(config: LivroPontoConfig, styles) -> Table:
+    titulo = Paragraph(
+        f"FOLHA DE FREQUÊNCIA &nbsp;&nbsp;&nbsp; {nome_mes(config.mes).upper()} DE {config.ano}",
+        styles["GovernoTitulo"],
+    )
+    pag = Paragraph("PAG: ____", styles["PagRotulo"])
+    tabela = Table([[titulo, pag]], colWidths=[_LARGURA_CONTEUDO - 2.8 * cm, 2.8 * cm])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.black),
+            ]
+        )
+    )
+    return tabela
+
+
+def _bloco_dados_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Table:
+    """Bloco NOME/RG/FAIXA-NÍVEL, SITUAÇÃO/CATEGORIA/JORNADA, CARGA
+    SUPLEMENTAR/CARGA HORÁRIA, DISCIPLINAS, SEDE DE CONTROLE DE FREQUÊNCIA —
+    nos mesmos rótulos do formulário "Folha de Frequência" original."""
+    P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
+    linhas = [
+        [P(_linha_campo("NOME", pessoa.nome)), P(_linha_campo("RG", pessoa.rg)), P("<b>FAIXA/NÍVEL:</b>")],
+        [
+            P(_linha_campo("SITUAÇÃO", pessoa.cargo)),
+            P(_linha_campo("CATEGORIA", pessoa.categoria)),
+            P("<b>JORNADA:</b> HORAS DE TRABALHO DOCENTE"),
+        ],
+        [P("<b>CARGA SUPLEMENTAR:</b> ____ HORAS"), P("<b>CARGA HORÁRIA:</b> ____ HORAS"), ""],
+        [P(_linha_campo("DISCIPLINAS", _truncar(pessoa.disciplinas, 90))), "", ""],
+        [P(_linha_campo("SEDE DE CONTROLE DE FREQUÊNCIA", config.escola.nome)), "", ""],
+    ]
+    larguras = [_LARGURA_FREQ_PRINCIPAL * 0.40, _LARGURA_FREQ_PRINCIPAL * 0.32, _LARGURA_FREQ_PRINCIPAL * 0.28]
+    tabela = Table(linhas, colWidths=larguras)
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("SPAN", (0, 3), (-1, 3)),
+                ("SPAN", (0, 4), (-1, 4)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.6, colors.black),
+            ]
+        )
+    )
+    return tabela
+
+
+def _tabela_dias_frequencia(styles) -> Table:
+    """Grade principal: Dia/Semana, Jornada prevista (Jorn. Dia/Subst.
+    Eventual/Reposição/Total Geral), Aulas por período (1ª a 11ª), Total
+    (U.E. Local/Geral) e Saldo Pend. Mês Anterior (Natureza/Saldo
+    Pendente/Falta M. Parcial) — em branco, para preenchimento manual."""
+    C = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
+    aulas = [f"{n}ª" for n in range(1, 12)]
+    linha0 = (
+        ["Assinaturas", "Dias", "", "Jornada prevista / UE-SCF", "", "", "", "Aulas — Unidade Escolar Local"]
+        + [""] * 10
+        + ["Total", "", "Saldo pend. mês anterior", "", ""]
+    )
+    linha1 = ["", "Dia", "Sem."] + ["Jorn.\nDia", "Subst.\nEvent.", "Repos.", "Total\nGeral"] + aulas + [
+        "U.E.\nLocal",
+        "Geral",
+        "Nat.",
+        "Saldo\nPend.",
+        "Falta M.\nParc.",
+    ]
+    dados = [linha0, linha1]
+    estilos_extra = [
+        ("SPAN", (0, 0), (0, 1)),
+        ("SPAN", (1, 0), (2, 0)),
+        ("SPAN", (3, 0), (6, 0)),
+        ("SPAN", (7, 0), (17, 0)),
+        ("SPAN", (18, 0), (19, 0)),
+        ("SPAN", (20, 0), (22, 0)),
+    ]
+    for dia in range(1, 32):
+        dados.append([str(dia)] + [""] * 22)
+
+    tabela = Table([[C(c) if isinstance(c, str) and c else c for c in row] for row in dados], colWidths=_COLS_FREQ, repeatRows=2)
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 5.6),
+                ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                ("BACKGROUND", (0, 0), (-1, 1), colors.lightgrey),
+            ]
+            + estilos_extra
+        )
+    )
+    return tabela
+
+
+def _painel_horario(styles) -> Table:
+    """Painel lateral: grade HORÁRIO (aulas 1ª-11ª x dia da semana), Carga
+    Horária - Outras UEs, Resumo Final (Resolução SE 08/2012) e Anotações —
+    igual ao formulário original."""
+    C = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
+    dias_semana = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM", "Total"]
+    # coluna de rótulo mais larga que as 8 colunas de dia — senão um texto
+    # como "Dias da semana" quebra em muitas linhas e estoura a altura.
+    larg_rotulo = 0.26 * _LARGURA_FREQ_PAINEL
+    larg_dia = (_LARGURA_FREQ_PAINEL - larg_rotulo) / 8
+    larguras_painel = [larg_rotulo] + [larg_dia] * 8
+
+    linhas: list = [[C("<b>Dias da\nsemana</b>")] + [C(f"<b>{d}</b>") for d in dias_semana]]
+    linhas.append([C("<b>Aulas</b>")] + [""] * 8)
+    for n in range(1, 12):
+        linhas.append([C(f"{n}ª")] + [""] * 8)
+    linhas.append([C("<b>Sub total 1</b>")] + [""] * 8)
+
+    tabela_horario = Table(linhas, colWidths=larguras_painel)
+    tabela_horario.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 5.6),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ]
+        )
+    )
+
+    linhas_outras_ue = [[C("<b>Carga horária — outras UEs</b>")] + [""] * 8]
+    for n in range(1, 6):
+        linhas_outras_ue.append([C(f"{n}ª UE")] + [""] * 8)
+    linhas_outras_ue.append([C("<b>Sub total 2</b>")] + [""] * 8)
+    linhas_outras_ue.append([C("<b>Total C.H. diária</b>")] + [""] * 8)
+    tabela_outras_ue = Table(linhas_outras_ue, colWidths=larguras_painel)
+    tabela_outras_ue.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 1), (-1, -1), 0.3, colors.black),
+                ("SPAN", (0, 0), (-1, 0)),
+                ("BOX", (0, 0), (-1, 0), 0.3, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 5.6),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ]
+        )
+    )
+
+    resumo = [
+        [C("<b>Resumo final</b> (Resolução SE 08/2012)"), "", ""],
+        ["", C("Semanal"), C("Mensal")],
+        [C("Jornada"), "", ""],
+        [C("Carga suplementar / carga horária"), C("0/ 12"), C("0/ 60")],
+        [C("Limite: Anexo Decreto nº 39.931/95"), C("Quantidade"), C("Vigência")],
+        ["", C("2"), ""],
+    ]
+    tabela_resumo = Table(
+        resumo,
+        colWidths=[0.56 * _LARGURA_FREQ_PAINEL, 0.22 * _LARGURA_FREQ_PAINEL, 0.22 * _LARGURA_FREQ_PAINEL],
+    )
+    tabela_resumo.setStyle(
+        TableStyle(
+            [
+                ("SPAN", (0, 0), (-1, 0)),
+                ("GRID", (0, 1), (-1, -1), 0.3, colors.black),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 5.6),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ]
+        )
+    )
+
+    anotacoes = Table(
+        [[C("<b>Anotações:</b> Aulas em Local Livre (ATPL)")]],
+        colWidths=[_LARGURA_FREQ_PAINEL],
+        rowHeights=[1.8 * cm],
+    )
+    anotacoes.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+
+    painel = Table(
+        [[tabela_horario], [Spacer(1, 0.15 * cm)], [tabela_outras_ue], [Spacer(1, 0.15 * cm)], [tabela_resumo], [Spacer(1, 0.15 * cm)], [anotacoes]],
+        colWidths=[_LARGURA_FREQ_PAINEL],
+    )
+    painel.setStyle(
+        TableStyle(
+            [
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return painel
+
+
+def _rodape_frequencia(styles) -> Table:
+    linhas = [
+        ["_" * 42, "_" * 42],
+        [
+            Paragraph("Responsável pelo registro", styles["CelTabelaPequena"]),
+            Paragraph("Diretor(a) de Escola", styles["CelTabelaPequena"]),
+        ],
+    ]
+    tabela = Table(linhas, colWidths=[_LARGURA_FREQ_PRINCIPAL * 0.5, _LARGURA_FREQ_PRINCIPAL * 0.5])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    return tabela
+
+
+def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Table:
+    """Folha de Frequência do docente: grade de aulas por dia/período,
+    painel de horário semanal e resumo final — formulário próprio,
+    diferente da folha de ponto administrativa (aqui não há verso de
+    consolidação: o resumo final já vem embutido na própria folha)."""
+    coluna_principal = Table(
+        [
+            [_cabecalho_frequencia(config, styles)],
+            [_bloco_dados_docente(config, pessoa, styles)],
+            [_tabela_dias_frequencia(styles)],
+            [Paragraph("<b>Observações:</b>", styles["Campo"])],
+            [Spacer(1, 0.9 * cm)],
+            [_rodape_frequencia(styles)],
+        ],
+        colWidths=[_LARGURA_FREQ_PRINCIPAL],
+    )
+    coluna_principal.setStyle(
+        TableStyle(
+            [
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    outer = Table([[coluna_principal, _painel_horario(styles)]], colWidths=[_LARGURA_FREQ_PRINCIPAL, _LARGURA_FREQ_PAINEL])
+    outer.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("LINEAFTER", (0, 0), (0, 0), 0.6, colors.black),
+            ]
+        )
+    )
+    return outer
+
+
 def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, styles) -> list:
     pessoas = config.pessoas_por_tipo(tipo)
     if not pessoas:
         return []
 
     elementos: list = []
-    # duas folhas por pessoa: a folha de ponto e o verso (folha de consolidação).
-    numero_folhas = len(pessoas) * 2 + 2  # + termo de abertura + termo de encerramento
+    if tipo == TipoServidor.ADMINISTRATIVO:
+        # duas folhas por pessoa: a folha de ponto e o verso (consolidação).
+        numero_folhas = len(pessoas) * 2 + 2
+    else:
+        # a Folha de Frequência do docente já traz o resumo do mês embutido
+        # (não tem verso/consolidação separada): uma folha por pessoa.
+        numero_folhas = len(pessoas) + 2
     elementos += _termo(config, tipo, numero_folhas, encerramento=False, styles=styles)
     elementos.append(PageBreak())
 
     for pessoa in pessoas:
-        elementos.append(_folha_ponto(config, pessoa, styles))
-        elementos.append(PageBreak())
-        elementos.append(KeepTogether(_folha_consolidacao(config, styles)))
+        if tipo == TipoServidor.ADMINISTRATIVO:
+            elementos.append(_folha_ponto(config, pessoa, styles))
+            elementos.append(PageBreak())
+            elementos.append(KeepTogether(_folha_consolidacao(config, styles)))
+        else:
+            elementos.append(_folha_frequencia_docente(config, pessoa, styles))
         elementos.append(PageBreak())
 
     elementos += _termo(config, tipo, numero_folhas, encerramento=True, styles=styles)
