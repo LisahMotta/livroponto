@@ -105,8 +105,12 @@ def _truncar(texto: str, limite: int = _LIMITE_OBSERVACAO) -> str:
 
 def _styles():
     ss = getSampleStyleSheet()
-    ss.add(ParagraphStyle("TituloLivro", parent=ss["Title"], fontSize=16, spaceAfter=6))
+    # "LIVRO PONTO" bem grande no termo — a pedido, já que o cabeçalho com
+    # nome da escola/diretoria/município/CIE saiu dessa página.
+    ss.add(ParagraphStyle("TituloLivro", parent=ss["Title"], fontSize=32, leading=36, spaceAfter=10))
     ss.add(ParagraphStyle("SubTitulo", parent=ss["Heading2"], alignment=1, spaceAfter=10))
+    # "Termo de Abertura"/"Termo de Encerramento" centralizados — a pedido.
+    ss.add(ParagraphStyle("TermoTitulo", parent=ss["Heading2"], alignment=1))
     ss.add(ParagraphStyle("Corpo", parent=ss["Normal"], fontSize=11, leading=16))
     ss.add(ParagraphStyle("CorpoCentro", parent=ss["Normal"], fontSize=11, leading=16, alignment=1))
     ss.add(ParagraphStyle("Rotulo", parent=ss["Normal"], fontSize=9, textColor=colors.grey))
@@ -133,23 +137,13 @@ def _styles():
     )
     ss.add(ParagraphStyle("CelTabela", parent=ss["Normal"], fontSize=8, alignment=1, leading=9))
     ss.add(ParagraphStyle("CelTabelaPequena", parent=ss["Normal"], fontSize=7.3, alignment=1, leading=8.3))
-    ss.add(ParagraphStyle("ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold"))
+    # "CONSOLIDAÇÃO" centralizada no verso — a pedido.
+    ss.add(
+        ParagraphStyle(
+            "ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold", alignment=1
+        )
+    )
     return ss
-
-
-def _cabecalho_escola(config: LivroPontoConfig, styles) -> list:
-    escola = config.escola
-    linhas = [Paragraph(escola.nome or "(Nome da escola não informado)", styles["Heading3"])]
-    detalhes = []
-    if escola.diretoria_ensino:
-        detalhes.append(f"Diretoria de Ensino: {escola.diretoria_ensino}")
-    if escola.municipio:
-        detalhes.append(f"Município: {escola.municipio}")
-    if escola.codigo_cie:
-        detalhes.append(f"Código CIE: {escola.codigo_cie}")
-    if detalhes:
-        linhas.append(Paragraph(" | ".join(detalhes), styles["Rotulo"]))
-    return linhas
 
 
 def _termo(
@@ -161,8 +155,7 @@ def _termo(
 ) -> list:
     escola = config.escola
     elementos = []
-    elementos += _cabecalho_escola(config, styles)
-    elementos.append(Spacer(1, 0.6 * cm))
+    elementos.append(Spacer(1, 1.5 * cm))
     elementos.append(Paragraph("LIVRO PONTO", styles["TituloLivro"]))
     elementos.append(
         Paragraph(_ROTULO_TIPO[tipo], styles["SubTitulo"])
@@ -176,7 +169,7 @@ def _termo(
     elementos.append(Spacer(1, 1.2 * cm))
 
     titulo_termo = "Termo de Encerramento" if encerramento else "Termo de Abertura"
-    elementos.append(Paragraph(titulo_termo, styles["Heading2"]))
+    elementos.append(Paragraph(titulo_termo, styles["TermoTitulo"]))
     elementos.append(Spacer(1, 0.4 * cm))
 
     # A quantidade de folhas fica em branco tanto no termo de abertura quanto
