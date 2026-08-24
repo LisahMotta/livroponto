@@ -354,6 +354,21 @@ def _tabela_dias(dias, styles) -> Table:
     return tabela
 
 
+def _texto_feriados_excecoes(dias, mes: int) -> str:
+    """Lista, em uma linha só, os feriados e exceções cadastradas
+    (recesso, ponto facultativo, suspensão) que caíram no mês — não
+    inclui sábado/domingo comum, só o que sai marcado como exceção na
+    tabela de dias da folha de ponto."""
+    itens = []
+    for dia in dias:
+        if dia.tipo not in ("FERIADO", "RECESSO", "PONTO_FACULTATIVO", "SUSPENSAO"):
+            continue
+        sigla = _SIGLA_TIPO.get(dia.tipo, dia.tipo)
+        descricao = f" ({dia.rotulo})" if dia.rotulo and dia.rotulo != sigla else ""
+        itens.append(f"{dia.dia:02d}/{mes:02d} - {sigla}{descricao}")
+    return "; ".join(itens)
+
+
 def _secao_financeira(pessoa: Pessoa, styles) -> Table:
     """Rodapé "INFORMAÇÕES FINANCEIRAS" (férias, GTN, ACA, serviço
     extraordinário, substituição eventual, vale transporte). O período de
@@ -472,18 +487,24 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
     return outer
 
 
-def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, styles) -> list:
+def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> list:
     """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
-    CONSOLIDAÇÃO, as anotações automáticas do servidor já impressas (férias
-    regulares cadastradas e observações — ex.: afastamentos), e o espaço
-    pautado restante para anotações manuscritas, com o fecho de data e
-    assinatura do superior imediato — igual ao formulário original."""
+    CONSOLIDAÇÃO, as anotações automáticas já impressas (feriados e
+    exceções do mês, férias regulares cadastradas e observações — ex.:
+    afastamentos), e o espaço pautado restante para anotações
+    manuscritas, com o fecho de data e assinatura do superior imediato —
+    igual ao formulário original."""
     elementos = [_cabecalho_formulario(config, styles, numero_pagina=None)]
     elementos.append(Spacer(1, 0.3 * cm))
     elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
     elementos.append(Spacer(1, 0.25 * cm))
 
     anotacoes = []
+    texto_feriados = _texto_feriados_excecoes(dias, config.mes)
+    if texto_feriados:
+        anotacoes.append(
+            Paragraph(f"<b>Feriados e exceções do mês:</b> {_truncar(texto_feriados, 400)}", styles["Campo"])
+        )
     if pessoa.periodo_ferias:
         anotacoes.append(Paragraph(f"<b>Férias Regulares</b> de {pessoa.periodo_ferias}", styles["Campo"]))
     if pessoa.observacoes:
@@ -841,7 +862,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
         if tipo in _TIPOS_FOLHA_PONTO:
             elementos.append(_folha_ponto(config, pessoa, dias, styles, numero_pagina))
             elementos.append(PageBreak())
-            elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, styles)))
+            elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, dias, styles)))
         else:
             elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles, numero_pagina))
         elementos.append(PageBreak())

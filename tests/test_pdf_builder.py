@@ -163,7 +163,7 @@ def test_folha_consolidacao_anota_ferias_regulares_no_verso():
     pessoa = Pessoa(
         nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
     )
-    elementos = _folha_consolidacao(config, pessoa, _styles())
+    elementos = _folha_consolidacao(config, pessoa, [], _styles())
     textos = _textos(elementos)
     assert any("Férias Regulares" in t and "03/04/2026 a 02/05/2026" in t for t in textos)
 
@@ -171,9 +171,40 @@ def test_folha_consolidacao_anota_ferias_regulares_no_verso():
 def test_folha_consolidacao_sem_ferias_nao_anota_nada():
     config = _config_exemplo()
     pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
-    elementos = _folha_consolidacao(config, pessoa, _styles())
+    elementos = _folha_consolidacao(config, pessoa, [], _styles())
     textos = _textos(elementos)
     assert not any("Férias Regulares" in t for t in textos)
+
+
+def test_folha_consolidacao_lista_feriados_e_excecoes_do_mes():
+    """Pedido do usuário: feriado e exceções (recesso, ponto facultativo,
+    suspensão) cadastrados/calculados para o mês têm que aparecer
+    também na folha de consolidação (verso), não só marcados na tabela
+    de dias da folha de ponto."""
+    from livroponto.models import DiaNaoLetivo
+
+    config = _config_exemplo()
+    config.mes = 4
+    config.ano = 2026
+    config.dias_excecao = [DiaNaoLetivo(mes=4, dia=8, tipo="RECESSO", descricao="Recesso escolar")]
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf, excecoes=config.dias_excecao)
+
+    elementos = _folha_consolidacao(config, pessoa, dias, _styles())
+    textos = _textos(elementos)
+    assert any("Feriados e exceções do mês" in t and "RECESSO" in t and "08/04" in t for t in textos)
+
+
+def test_folha_consolidacao_sem_feriados_no_mes_nao_anota_nada():
+    config = _config_exemplo()
+    config.mes = 4
+    config.ano = 2026
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
+    dias = [d for d in montar_calendario(config.ano, config.mes, uf=config.uf) if d.e_dia_normal]
+
+    elementos = _folha_consolidacao(config, pessoa, dias, _styles())
+    textos = _textos(elementos)
+    assert not any("Feriados e exceções do mês" in t for t in textos)
 
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
