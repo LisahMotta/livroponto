@@ -162,11 +162,10 @@ def _termo(
     elementos.append(Paragraph(titulo_termo, styles["Heading2"]))
     elementos.append(Spacer(1, 0.4 * cm))
 
+    # A quantidade de folhas fica em branco tanto no termo de abertura quanto
+    # no de encerramento, para preenchimento manual — pode mudar durante o
+    # mês (servidor incluído/excluído do livro).
     if not encerramento:
-        # A quantidade de folhas fica em branco no termo de abertura — pode
-        # mudar durante o mês (servidor incluído/excluído do livro) — e só é
-        # preenchida (à mão) na abertura ou confirmada no termo de
-        # encerramento, quando o número final já está fechado.
         texto = (
             "Contém este livro ( _____ ) folhas, por mim abertas, "
             f"numeradas e rubricadas, e destina-se ao registro do Ponto "
@@ -174,9 +173,9 @@ def _termo(
         )
     else:
         texto = (
-            f"Contém este livro ( {numero_folhas} ) folhas, por mim abertas, "
-            f"numeradas e rubricadas e encerradas, e se destinou ao uso no "
-            f"termo de abertura indicado."
+            "Contém este livro ( _____ ) folhas, por mim abertas, "
+            "numeradas e rubricadas e encerradas, e se destinou ao uso no "
+            "termo de abertura indicado."
         )
     elementos.append(Paragraph(texto, styles["Corpo"]))
     elementos.append(Spacer(1, 2.0 * cm))
