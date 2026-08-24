@@ -43,12 +43,6 @@ def _cmd_gerar(args: argparse.Namespace) -> None:
             config.mes = args.mes
         if args.ano is not None:
             config.ano = args.ano
-        if args.somente_docentes:
-            config.pessoas = config.pessoas_por_tipo(TipoServidor.DOCENTE)
-        if args.somente_administrativos:
-            config.pessoas = config.pessoas_por_tipo(TipoServidor.ADMINISTRATIVO)
-        if args.somente_gestao:
-            config.pessoas = config.pessoas_por_tipo(TipoServidor.GESTAO)
 
     if args.feriados_extra:
         config.dias_excecao = carregar_dias_excecao(args.feriados_extra)
@@ -63,9 +57,24 @@ def _cmd_gerar(args: argparse.Namespace) -> None:
             "filtros e a coluna PONTO/ponto na planilha de entrada)."
         )
 
+    # Os --somente-* escolhem quais livros ganham folhas, sem tirar ninguém
+    # de config.pessoas antes de chamar gerar_pdf — do contrário, gerar só o
+    # livro administrativo (--somente-administrativos) faria o(a) Diretor(a)
+    # de Escola cadastrado na Gestão sumir da assinatura do termo, já que
+    # nome_diretor() procura o diretor entre todo mundo do cadastro.
+    tipos_incluidos = {
+        tipo
+        for tipo, somente in (
+            (TipoServidor.ADMINISTRATIVO, args.somente_administrativos),
+            (TipoServidor.DOCENTE, args.somente_docentes),
+            (TipoServidor.GESTAO, args.somente_gestao),
+        )
+        if somente
+    } or None
+
     saida = Path(args.saida)
     saida.parent.mkdir(parents=True, exist_ok=True)
-    caminho_final = gerar_pdf(config, saida)
+    caminho_final = gerar_pdf(config, saida, tipos_incluidos=tipos_incluidos)
     print(f"Livro Ponto gerado: {caminho_final}")
     print(
         f"  Escola: {config.escola.nome or '(não informado)'} | "

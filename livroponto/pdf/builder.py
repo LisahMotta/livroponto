@@ -886,16 +886,28 @@ def gerar_pdf(
     config: LivroPontoConfig,
     caminho_saida: str | Path,
     uf: str | None = None,
+    tipos_incluidos: set[TipoServidor] | None = None,
 ) -> Path:
     """Gera o PDF completo do Livro Ponto para o mês/ano de `config`.
 
     Só entram no PDF as pessoas com `ponto=True` — quem tem `ponto=False`
     fica no cadastro (para editar depois) mas não ganha folha impressa.
+
+    `tipos_incluidos` escolhe quais dos três livros (administrativo, gestão,
+    docente) de fato ganham folhas — por padrão, os três. Importante: isso
+    NÃO filtra `config.pessoas` antes de montar cada livro, só decide quais
+    `_bloco_tipo` rodam — assim, mesmo gerando só o livro administrativo (com
+    "Trio gestor" desmarcado, por exemplo), o(a) Diretor(a) de Escola
+    cadastrado na Gestão continua sendo encontrado por `nome_diretor()` para
+    assinar o termo. Filtrar `config.pessoas` por tipo *antes* de chamar esta
+    função (como o app desktop já fez no passado) quebra essa assinatura.
     """
     pessoas_com_ponto = [p for p in config.pessoas if p.ponto]
     if not pessoas_com_ponto:
         raise ValueError("Nenhuma pessoa com ponto habilitado para gerar o livro.")
     config = replace(config, pessoas=pessoas_com_ponto)
+    if tipos_incluidos is None:
+        tipos_incluidos = set(TipoServidor)
 
     # Calendário do mês: marca automaticamente sábados, domingos, feriados
     # nacionais/estaduais (via `holidays`, pela UF) e as exceções cadastradas
@@ -914,9 +926,9 @@ def gerar_pdf(
     )
 
     elementos: list = []
-    elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, dias, styles)
-    elementos += _bloco_tipo(config, TipoServidor.GESTAO, dias, styles)
-    elementos += _bloco_tipo(config, TipoServidor.DOCENTE, dias, styles)
+    for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO, TipoServidor.DOCENTE):
+        if tipo in tipos_incluidos:
+            elementos += _bloco_tipo(config, tipo, dias, styles)
 
     if elementos and isinstance(elementos[-1], PageBreak):
         elementos.pop()

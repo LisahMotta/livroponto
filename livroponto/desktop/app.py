@@ -15,7 +15,6 @@ import os
 import subprocess
 import sys
 import tkinter as tk
-from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -380,8 +379,7 @@ class Aplicativo(ttk.Window):
             )
             return
 
-        pessoas_filtradas = [p for p in self.dados.pessoas if p.tipo in tipos_incluidos]
-        if not any(p.ponto for p in pessoas_filtradas):
+        if not any(p.ponto for p in self.dados.pessoas if p.tipo in tipos_incluidos):
             messagebox.showwarning(
                 "Nada para gerar",
                 "Adicione ao menos um servidor (do(s) tipo(s) marcado(s) em \"Incluir\") "
@@ -402,7 +400,13 @@ class Aplicativo(ttk.Window):
         if not caminho:
             return
         try:
-            gerar_pdf(replace(self.dados, pessoas=pessoas_filtradas), caminho)
+            # Não filtra self.dados.pessoas por tipo antes de chamar gerar_pdf
+            # — isso faria o(a) Diretor(a) de Escola cadastrado na Gestão
+            # sumir da assinatura do termo do livro administrativo quando
+            # "Trio gestor" está desmarcado em "Incluir" (bug real
+            # reportado). tipos_incluidos decide quais livros ganham
+            # folhas; quem assina continua sendo procurado em todo mundo.
+            gerar_pdf(self.dados, caminho, tipos_incluidos=tipos_incluidos)
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Erro ao gerar PDF", str(exc), parent=self)
             return

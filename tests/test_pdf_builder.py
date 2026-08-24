@@ -152,6 +152,43 @@ def test_termo_assina_com_nome_do_diretor_cadastrado():
     assert "Fulana Diretora" in _textos(elementos)
 
 
+def test_gerar_pdf_so_administrativo_ainda_encontra_diretor_da_gestao(tmp_path, monkeypatch):
+    """Bug real reportado pelo usuário: gerando só o livro administrativo
+    (tipos_incluidos sem GESTAO — equivalente a desmarcar "Trio gestor" em
+    "Incluir" no app desktop), o(a) Diretor(a) de Escola cadastrado na
+    Gestão sumia da assinatura do termo, porque quem chamava gerar_pdf
+    filtrava config.pessoas por tipo ANTES de passar pra cá, removendo a
+    pessoa que nome_diretor() precisa encontrar. gerar_pdf agora só decide
+    quais livros ganham folhas via tipos_incluidos, sem tirar ninguém do
+    config — espiona o config que de fato chega em _bloco_tipo pra provar
+    isso (o PDF final vem comprimido, não dá pra checar o texto direto nos
+    bytes — a cobertura do texto em si já está em
+    test_termo_assina_com_nome_do_diretor_cadastrado)."""
+    import livroponto.pdf.builder as builder_mod
+
+    config = _config_exemplo()
+    config.pessoas.append(
+        Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    )
+
+    configs_vistos = []
+    original = builder_mod._bloco_tipo
+
+    def _bloco_tipo_espiao(config_recebido, tipo, dias, styles):
+        configs_vistos.append((tipo, config_recebido))
+        return original(config_recebido, tipo, dias, styles)
+
+    monkeypatch.setattr(builder_mod, "_bloco_tipo", _bloco_tipo_espiao)
+
+    caminho = tmp_path / "livro_ponto.pdf"
+    gerar_pdf(config, caminho, tipos_incluidos={TipoServidor.ADMINISTRATIVO})
+
+    # só o bloco administrativo roda — mas o config que ele recebe ainda
+    # tem a diretora da Gestão, então nome_diretor() a encontra.
+    assert [tipo for tipo, _ in configs_vistos] == [TipoServidor.ADMINISTRATIVO]
+    assert configs_vistos[0][1].nome_diretor() == "Fulana Diretora"
+
+
 def test_termo_sem_diretor_cadastrado_fica_so_com_o_rotulo():
     config = _config_exemplo()
     assert config.pessoas_por_tipo(TipoServidor.GESTAO) == []

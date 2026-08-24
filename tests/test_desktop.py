@@ -245,6 +245,41 @@ def test_gerar_pdf_sugere_nome_de_arquivo_pelo_tipo_incluido(app, tmp_path, monk
     assert nomes_sugeridos[-1].startswith("livro_ponto_gestao_")
 
 
+def test_gerar_pdf_sem_gestao_ainda_leva_diretor_pro_gerar_pdf(app, monkeypatch):
+    """Bug real reportado pelo usuário: desmarcar "Trio gestor" em
+    "Incluir" não pode fazer o(a) Diretor(a) de Escola cadastrado na
+    Gestão sumir do cadastro passado pra gerar_pdf — senão o termo do
+    livro administrativo perde a assinatura automática. O app não filtra
+    mais app.dados.pessoas por tipo antes de chamar gerar_pdf; quem
+    decide quais livros ganham folhas é o parâmetro tipos_incluidos."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.dados.pessoas.append(
+        _pessoa_exemplo(nome="Diretora Teste", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    )
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_incluir_gestao.set(False)
+
+    chamadas = []
+
+    def _gerar_pdf_espiao(config, caminho, **kwargs):
+        chamadas.append((config, kwargs.get("tipos_incluidos")))
+        return caminho
+
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "gerar_pdf", _gerar_pdf_espiao)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert len(chamadas) == 1
+    config_recebido, tipos_incluidos = chamadas[0]
+    assert config_recebido.nome_diretor() == "Diretora Teste"
+    assert TipoServidor.GESTAO not in tipos_incluidos
+    assert TipoServidor.ADMINISTRATIVO in tipos_incluidos
+
+
 def test_checkboxes_incluir_existem_e_comecam_marcados(app):
     assert app.var_incluir_administrativos.get() is True
     assert app.var_incluir_docentes.get() is True
