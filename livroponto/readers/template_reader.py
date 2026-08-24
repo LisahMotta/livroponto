@@ -1,6 +1,7 @@
 """Leitor/gerador do modelo simplificado (.xlsx) — alternativa para quem não
 tem a planilha legada SEDUC-SP: uma aba "Escola" (campo/valor), uma aba
-"Pessoas" (uma linha por servidor) e uma aba "Excecoes" (recesso, ponto
+"Pessoas" (uma linha por servidor), uma aba "EquipeGestora" (direção,
+coordenação pedagógica etc.) e uma aba "Excecoes" (recesso, ponto
 facultativo etc.). É o mesmo formato usado para persistir o que é editado
 no app web (`livroponto app`) — editar lá e "Salvar" grava nesse formato."""
 from __future__ import annotations
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from ..models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
+from ..models import DiaNaoLetivo, Escola, LivroPontoConfig, MembroGestao, Pessoa, TipoServidor
 
 COLUNAS_PESSOAS = [
     "tipo",
@@ -30,6 +31,8 @@ COLUNAS_PESSOAS = [
 ]
 
 COLUNAS_EXCECOES = ["mes", "dia", "tipo", "descricao"]
+
+COLUNAS_GESTAO = ["cargo", "nome", "rg"]
 
 CAMPOS_ESCOLA = [
     ("nome", "Nome da escola"),
@@ -92,7 +95,10 @@ def criar_modelo(caminho: str | Path) -> None:
             jornada_codigo="B",
         ),
     ]
-    config = LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas)
+    equipe_gestora = [
+        MembroGestao(nome="Beltrano de Souza", cargo="Diretor(a) de Escola", rg="11.222.333-4"),
+    ]
+    config = LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas, equipe_gestora=equipe_gestora)
     salvar_modelo(config, caminho)
 
 
@@ -128,6 +134,11 @@ def salvar_modelo(config: LivroPontoConfig, caminho: str | Path) -> None:
     aba_pessoas.append(COLUNAS_PESSOAS)
     for p in config.pessoas:
         aba_pessoas.append(_linha_pessoa(p))
+
+    aba_gestao = wb.create_sheet("EquipeGestora")
+    aba_gestao.append(COLUNAS_GESTAO)
+    for m in config.equipe_gestora:
+        aba_gestao.append([m.cargo, m.nome, m.rg])
 
     aba_excecoes = wb.create_sheet("Excecoes")
     aba_excecoes.append(COLUNAS_EXCECOES)
@@ -241,6 +252,23 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
                 )
             )
 
+    equipe_gestora: list[MembroGestao] = []
+    if "EquipeGestora" in wb.sheetnames:
+        idx_gestao, linhas_gestao = _ler_tabela("EquipeGestora")
+        for row in linhas_gestao:
+            if not row or all(v in (None, "") for v in row):
+                continue
+            nome_gestor = str(campo(row, idx_gestao, "nome", "")).strip()
+            if not nome_gestor:
+                continue
+            equipe_gestora.append(
+                MembroGestao(
+                    nome=nome_gestor,
+                    cargo=str(campo(row, idx_gestao, "cargo", "")).strip(),
+                    rg=str(campo(row, idx_gestao, "rg", "")),
+                )
+            )
+
     return LivroPontoConfig(
         escola=escola,
         mes=mes,
@@ -249,4 +277,5 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
         cidade_assinatura=cidade_assinatura,
         uf=uf,
         dias_excecao=dias_excecao,
+        equipe_gestora=equipe_gestora,
     )

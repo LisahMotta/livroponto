@@ -92,6 +92,18 @@ class DiaNaoLetivo:
 
 
 @dataclass
+class MembroGestao:
+    """Um membro da equipe gestora da escola (direção, vice-direção,
+    coordenação pedagógica, secretaria) — cadastro informativo; o nome
+    do(a) Diretor(a) de Escola cadastrado aqui sai assinando "Direção da
+    Unidade Escolar" nos termos de abertura/encerramento do livro."""
+
+    nome: str
+    cargo: str  # ex.: "Diretor(a) de Escola", "Vice-Diretor(a) de Escola"
+    rg: str = ""
+
+
+@dataclass
 class LivroPontoConfig:
     escola: Escola
     mes: int
@@ -101,6 +113,17 @@ class LivroPontoConfig:
     cidade_assinatura: str = ""
     uf: str = "SP"
     dias_excecao: list[DiaNaoLetivo] = field(default_factory=list)
+    equipe_gestora: list[MembroGestao] = field(default_factory=list)
 
     def pessoas_por_tipo(self, tipo: TipoServidor) -> list[Pessoa]:
         return [p for p in self.pessoas if p.tipo == tipo]
+
+    def nome_diretor(self) -> str:
+        """Nome do(a) Diretor(a) de Escola cadastrado na equipe gestora,
+        se houver ("Vice-Diretor(a)" não conta — o cargo precisa começar
+        com "Diretor"). Retorna string vazia se não houver ninguém
+        cadastrado com esse cargo."""
+        for membro in self.equipe_gestora:
+            if membro.cargo.strip().lower().startswith("diretor"):
+                return membro.nome
+        return ""

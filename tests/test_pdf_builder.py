@@ -1,5 +1,7 @@
-from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
-from livroponto.pdf.builder import gerar_pdf
+from reportlab.platypus import Paragraph
+
+from livroponto.models import Escola, LivroPontoConfig, MembroGestao, Pessoa, TipoServidor, chave_ordenacao_rg
+from livroponto.pdf.builder import _styles, _termo, gerar_pdf
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -89,3 +91,37 @@ def test_ordenacao_por_rg_sem_rg_cadastrado_vai_pro_fim():
 
     ordenados = sorted([sem_rg, com_rg], key=chave_ordenacao_rg)
     assert [p.nome for p in ordenados] == ["Com RG", "Sem RG"]
+
+
+def _textos(elementos) -> list[str]:
+    return [e.text for e in elementos if isinstance(e, Paragraph)]
+
+
+def test_termo_assina_com_nome_do_diretor_cadastrado():
+    config = _config_exemplo()
+    config.equipe_gestora = [
+        MembroGestao(nome="Fulana Diretora", cargo="Diretor(a) de Escola"),
+        MembroGestao(nome="Ciclano Vice", cargo="Vice-Diretor(a) de Escola"),
+    ]
+    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
+    assert "Fulana Diretora" in _textos(elementos)
+
+
+def test_termo_sem_equipe_gestora_cadastrada_fica_so_com_o_rotulo():
+    config = _config_exemplo()
+    assert config.equipe_gestora == []
+    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
+    textos = _textos(elementos)
+    idx = textos.index("Direção da Unidade Escolar")
+    # sem diretor cadastrado, o rótulo vem logo depois da linha de
+    # assinatura (sublinhado) — nenhum parágrafo de nome é inserido entre eles
+    assert textos[idx - 1] == "_" * 50
+
+
+def test_nome_diretor_ignora_vice_diretor():
+    config = _config_exemplo()
+    config.equipe_gestora = [MembroGestao(nome="Ciclano Vice", cargo="Vice-Diretor(a) de Escola")]
+    assert config.nome_diretor() == ""
+
+    config.equipe_gestora.append(MembroGestao(nome="Fulana Diretora", cargo="Diretor(a) de Escola"))
+    assert config.nome_diretor() == "Fulana Diretora"

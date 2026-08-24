@@ -25,7 +25,7 @@ from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg
 from ..pdf.builder import gerar_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
-from .dialogs import DialogoExcecao, DialogoPessoa
+from .dialogs import DialogoExcecao, DialogoMembroGestao, DialogoPessoa
 
 MESES_CAP = [nome_mes(i).capitalize() for i in range(1, 13)]
 
@@ -88,13 +88,16 @@ class Aplicativo(tk.Tk):
 
         aba_escola = ttk.Frame(notebook, padding=12)
         aba_pessoas = ttk.Frame(notebook)
+        aba_gestao = ttk.Frame(notebook)
         aba_excecoes = ttk.Frame(notebook)
         notebook.add(aba_escola, text="Escola")
         notebook.add(aba_pessoas, text="Servidores e professores")
+        notebook.add(aba_gestao, text="Equipe gestora")
         notebook.add(aba_excecoes, text="Feriados e exceções")
 
         self._construir_aba_escola(aba_escola)
         self._construir_aba_pessoas(aba_pessoas)
+        self._construir_aba_gestao(aba_gestao)
         self._construir_aba_excecoes(aba_excecoes)
 
     def _construir_aba_escola(self, aba: ttk.Frame) -> None:
@@ -168,6 +171,38 @@ class Aplicativo(tk.Tk):
         self.tree_pessoas.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         self.tree_pessoas.bind("<Double-1>", lambda _e: self._editar_pessoa_selecionada())
+
+    def _construir_aba_gestao(self, aba: ttk.Frame) -> None:
+        aviso = (
+            "Cadastre aqui a direção, vice-direção, coordenação pedagógica e secretaria "
+            "da escola. O nome do(a) Diretor(a) de Escola cadastrado aqui sai assinando "
+            "\"Direção da Unidade Escolar\" nos termos de abertura e encerramento do livro."
+        )
+        ttk.Label(aba, text=aviso, wraplength=920, foreground="grey").pack(
+            fill="x", padx=8, pady=(8, 4)
+        )
+
+        barra = ttk.Frame(aba, padding=(8, 0, 8, 4))
+        barra.pack(fill="x")
+        ttk.Button(barra, text="Adicionar", command=self._adicionar_gestor).pack(side="left")
+        ttk.Button(barra, text="Editar", command=self._editar_gestor_selecionado).pack(side="left", padx=6)
+        ttk.Button(barra, text="Remover", command=self._remover_gestor_selecionado).pack(side="left")
+
+        colunas = ("cargo", "nome", "rg")
+        titulos = {"cargo": "Cargo", "nome": "Nome", "rg": "RG"}
+        larguras = {"cargo": 260, "nome": 300, "rg": 140}
+
+        container = ttk.Frame(aba)
+        container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.tree_gestao = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
+        for c in colunas:
+            self.tree_gestao.heading(c, text=titulos[c])
+            self.tree_gestao.column(c, width=larguras[c], anchor="w")
+        scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_gestao.yview)
+        self.tree_gestao.configure(yscrollcommand=scroll.set)
+        self.tree_gestao.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.tree_gestao.bind("<Double-1>", lambda _e: self._editar_gestor_selecionado())
 
     def _construir_aba_excecoes(self, aba: ttk.Frame) -> None:
         aviso = (
@@ -248,6 +283,7 @@ class Aplicativo(tk.Tk):
     def _atualizar_tudo(self) -> None:
         self._atualizar_campos_escola()
         self._atualizar_lista_pessoas()
+        self._atualizar_lista_gestao()
         self._atualizar_lista_excecoes()
 
     def _status(self, texto: str) -> None:
@@ -404,6 +440,47 @@ class Aplicativo(tk.Tk):
             del self.dados.pessoas[idx]
             self._atualizar_lista_pessoas()
             self._status("Servidor removido.")
+
+    # ------------------------------------------------------------------
+    # Aba Equipe gestora
+    # ------------------------------------------------------------------
+    def _atualizar_lista_gestao(self) -> None:
+        self.tree_gestao.delete(*self.tree_gestao.get_children())
+        for i, m in enumerate(self.dados.equipe_gestora):
+            self.tree_gestao.insert("", "end", iid=str(i), values=(m.cargo, m.nome, m.rg))
+
+    def _gestor_selecionado(self) -> int | None:
+        sel = self.tree_gestao.selection()
+        return int(sel[0]) if sel else None
+
+    def _adicionar_gestor(self) -> None:
+        dlg = DialogoMembroGestao(self)
+        if dlg.resultado:
+            self.dados.equipe_gestora.append(dlg.resultado)
+            self._atualizar_lista_gestao()
+            self._status("Membro da equipe gestora adicionado.")
+
+    def _editar_gestor_selecionado(self) -> None:
+        idx = self._gestor_selecionado()
+        if idx is None:
+            messagebox.showinfo("Selecione um membro", "Clique numa linha da tabela primeiro.", parent=self)
+            return
+        dlg = DialogoMembroGestao(self, self.dados.equipe_gestora[idx])
+        if dlg.resultado:
+            self.dados.equipe_gestora[idx] = dlg.resultado
+            self._atualizar_lista_gestao()
+            self._status("Membro da equipe gestora atualizado.")
+
+    def _remover_gestor_selecionado(self) -> None:
+        idx = self._gestor_selecionado()
+        if idx is None:
+            messagebox.showinfo("Selecione um membro", "Clique numa linha da tabela primeiro.", parent=self)
+            return
+        membro = self.dados.equipe_gestora[idx]
+        if messagebox.askyesno("Remover membro", f"Remover {membro.nome}?", parent=self):
+            del self.dados.equipe_gestora[idx]
+            self._atualizar_lista_gestao()
+            self._status("Membro da equipe gestora removido.")
 
     # ------------------------------------------------------------------
     # Aba Exceções de calendário

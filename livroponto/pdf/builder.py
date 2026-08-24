@@ -178,6 +178,9 @@ def _termo(
     )
     elementos.append(Spacer(1, 2.0 * cm))
     elementos.append(Paragraph("_" * 50, styles["CorpoCentro"]))
+    nome_diretor = config.nome_diretor()
+    if nome_diretor:
+        elementos.append(Paragraph(nome_diretor, styles["CorpoCentro"]))
     elementos.append(Paragraph("Direção da Unidade Escolar", styles["CorpoCentro"]))
     return elementos
 
