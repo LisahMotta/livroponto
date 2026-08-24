@@ -65,6 +65,11 @@ class DialogoPessoa(_DialogoBase):
         r += 1
         self.var_cargo = _linha(corpo, r, "Cargo/Função")
         r += 1
+        self.var_observacoes = _linha(corpo, r, "Observações", 40)
+        ttk.Label(corpo, text="(ex.: afastamentos — sai impressa na folha de Consolidação)", foreground="grey").grid(
+            row=r, column=2, columnspan=2, sticky="w", padx=(12, 0)
+        )
+        r += 1
 
         ttk.Label(corpo, text="Jornada (h/sem)").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
         self.var_jornada = tk.StringVar()
@@ -103,8 +108,6 @@ class DialogoPessoa(_DialogoBase):
         self.var_categoria = _linha(corpo, r, "Categoria")
         r += 1
         self.var_situacao = _linha(corpo, r, "Situação")
-        r += 1
-        self.var_observacoes = _linha(corpo, r, "Observações", 40)
         r += 1
 
         botoes = ttk.Frame(corpo)

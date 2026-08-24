@@ -6,11 +6,14 @@ encerramento — para administrativos e para docentes, cada grupo como um
 O layout da folha de ponto e da folha de consolidação replica o formulário
 oficial realmente usado (brasão do Estado de São Paulo, cabeçalho "GOVERNO
 DO ESTADO DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO", os mesmos
-campos/rótulos, a tabela de 1 a 31 sem marcação automática de feriado/fim de
-semana — o preenchimento desses dias é manual, como no formulário original
-— e a seção "INFORMAÇÕES FINANCEIRAS" no rodapé)."""
+campos/rótulos e a seção "INFORMAÇÕES FINANCEIRAS" no rodapé). Sábados,
+domingos, feriados e exceções cadastradas (recesso, ponto facultativo etc.)
+são marcados automaticamente na tabela de dias; dias úteis ficam em branco
+para preenchimento manual. As observações cadastradas para cada servidor
+(ex.: afastamentos) saem impressas na folha de consolidação."""
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from pathlib import Path
 
@@ -43,8 +46,10 @@ _LIMITE_OBSERVACAO = 170
 _LOGO_SP = Path(__file__).resolve().parent / "assets" / "brasao_sp.png"
 
 # Proporções de coluna da tabela de dias (Dia | Entrada Hora/Assinatura |
-# Saída Hora/Assinatura | Observações | Visto), tiradas do formulário real.
-_FRACOES_TABELA_DIAS = [0.0438, 0.0808, 0.1639, 0.0808, 0.1639, 0.3025, 0.1639]
+# Saída Hora/Assinatura | Observações | Visto), tiradas do formulário real —
+# Observações reduzida e Assinatura (Entrada/Saída) ampliadas a pedido, já
+# que a assinatura precisa de mais espaço do que as observações no dia a dia.
+_FRACOES_TABELA_DIAS = [0.0438, 0.0808, 0.2150, 0.0808, 0.2150, 0.2000, 0.1639]
 
 # Proporções de coluna da seção "Informações financeiras" (6 colunas).
 _FRACOES_FINANCEIRO = [0.1573, 0.2043, 0.1195, 0.2043, 0.2043, 0.1102]
@@ -347,7 +352,7 @@ def _secao_financeira(styles) -> Table:
             P("<b>SUBSTITUIÇÃO<br/>EVENTUAL</b>"),
             P("PERÍODO<br/>___/___/___ ATÉ ___/___/___"),
             "",
-            P("CARGO/FUNÇÃO<br/>SUBSTITUÍDA"),
+            P("CARGO/FUNÇÃO SUBSTITUÍDA:<br/>_____________________"),
             P("VALE TRANSPORTE - CLT (SIM/NÃO)"),
             "",
         ],
@@ -376,20 +381,32 @@ def _secao_financeira(styles) -> Table:
 
 
 def _rodape_assinaturas(styles) -> Table:
+    """Linha de assinaturas, com um espaço em branco real entre a do
+    servidor e a do superior imediato — para não parecerem "coladas"."""
     linhas = [
-        ["_" * 42, "_" * 48, ""],
+        ["_" * 36, "", "_" * 36, "", ""],
         [
             Paragraph("ASSINATURA DO SERVIDOR", styles["CelTabelaPequena"]),
+            "",
             Paragraph("ASSINATURA DO SUPERIOR IMEDIATO", styles["CelTabelaPequena"]),
+            "",
             Paragraph("DATA: ___/___/_____", styles["Campo"]),
         ],
     ]
-    tabela = Table(linhas, colWidths=[_LARGURA_CONTEUDO * 0.4, _LARGURA_CONTEUDO * 0.4, _LARGURA_CONTEUDO * 0.2])
+    larguras = [
+        _LARGURA_CONTEUDO * 0.36,
+        _LARGURA_CONTEUDO * 0.06,
+        _LARGURA_CONTEUDO * 0.36,
+        _LARGURA_CONTEUDO * 0.04,
+        _LARGURA_CONTEUDO * 0.18,
+    ]
+    tabela = Table(linhas, colWidths=larguras)
     tabela.setStyle(
         TableStyle(
             [
-                ("ALIGN", (0, 0), (1, -1), "CENTER"),
-                ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (2, 0), (2, -1), "CENTER"),
+                ("ALIGN", (4, 0), (4, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
             ]
@@ -422,17 +439,28 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> Tabl
     return outer
 
 
-def _folha_consolidacao(config: LivroPontoConfig, styles) -> list:
+def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, styles) -> list:
     """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
-    CONSOLIDAÇÃO, espaço pautado para anotações manuscritas, e o fecho com
-    data e assinatura do superior imediato — igual ao formulário original."""
+    CONSOLIDAÇÃO, as observações cadastradas para o servidor (ex.:
+    afastamentos — ver campo "Observações" no cadastro) já impressas, e o
+    espaço pautado restante para anotações manuscritas, com o fecho de data
+    e assinatura do superior imediato — igual ao formulário original."""
     elementos = [_cabecalho_formulario(config, styles, mostrar_pag=False)]
     elementos.append(Spacer(1, 0.3 * cm))
     elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
     elementos.append(Spacer(1, 0.25 * cm))
 
-    linhas_pautadas = [[""] for _ in range(25)]
-    tabela_pauta = Table(linhas_pautadas, colWidths=[_LARGURA_CONTEUDO], rowHeights=[0.72 * cm] * 25)
+    total_linhas = 25
+    if pessoa.observacoes:
+        obs = Paragraph(f"<b>OBSERVAÇÕES:</b> {_truncar(pessoa.observacoes, 400)}", styles["Campo"])
+        _largura_obs, altura_obs = obs.wrap(_LARGURA_CONTEUDO, 100 * cm)
+        linhas_ocupadas = math.ceil((altura_obs + 0.3 * cm) / (0.72 * cm))
+        total_linhas = max(10, 25 - linhas_ocupadas)
+        elementos.append(obs)
+        elementos.append(Spacer(1, 0.3 * cm))
+
+    linhas_pautadas = [[""] for _ in range(total_linhas)]
+    tabela_pauta = Table(linhas_pautadas, colWidths=[_LARGURA_CONTEUDO], rowHeights=[0.72 * cm] * total_linhas)
     tabela_pauta.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.black)]))
     elementos.append(tabela_pauta)
 
@@ -767,7 +795,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
         if tipo == TipoServidor.ADMINISTRATIVO:
             elementos.append(_folha_ponto(config, pessoa, dias, styles))
             elementos.append(PageBreak())
-            elementos.append(KeepTogether(_folha_consolidacao(config, styles)))
+            elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, styles)))
         else:
             elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles))
         elementos.append(PageBreak())
