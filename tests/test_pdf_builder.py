@@ -178,8 +178,9 @@ def test_folha_consolidacao_sem_ferias_nao_anota_nada():
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
     """O trio gestor usa o mesmo formato de folha de ponto do
-    administrativo (com verso de consolidação), mas em livro próprio,
-    com o rótulo "DO TRIO GESTOR"."""
+    administrativo (com verso de consolidação), em livro próprio — mas,
+    a pedido, o termo desse livro não imprime "trio gestor" em lugar
+    nenhum (fica em branco, sem qualificação de tipo)."""
     config = _config_exemplo()
     config.pessoas.append(
         Pessoa(
@@ -195,7 +196,9 @@ def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
     dias = montar_calendario(config.ano, config.mes, uf=config.uf, excecoes=config.dias_excecao)
     elementos = _bloco_tipo(config, TipoServidor.GESTAO, dias, _styles())
     assert elementos
-    assert "DO TRIO GESTOR" in _textos(elementos)
+    textos = _textos(elementos)
+    assert not any("trio gestor" in t.lower() or "TRIO GESTOR" in t for t in textos)
+    assert "LIVRO PONTO" in textos
 
 
 def test_gerar_pdf_inclui_folha_do_trio_gestor(tmp_path):

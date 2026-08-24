@@ -38,7 +38,9 @@ from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
 _ROTULO_TIPO = {
     TipoServidor.ADMINISTRATIVO: "DO PESSOAL ADMINISTRATIVO",
     TipoServidor.DOCENTE: "DO PESSOAL DOCENTE",
-    TipoServidor.GESTAO: "DO TRIO GESTOR",
+    # A pedido: o termo do livro da gestão não imprime "trio gestor" — fica
+    # em branco (sem subtítulo/qualificação de tipo).
+    TipoServidor.GESTAO: "",
 }
 
 # Tipos cuja folha usa o formato administrativo (folha de ponto tradicional
@@ -161,10 +163,12 @@ def _termo(
     # no de encerramento, para preenchimento manual — pode mudar durante o
     # mês (servidor incluído/excluído do livro).
     if not encerramento:
+        rotulo = _ROTULO_TIPO[tipo]
+        qualificacao = f"{rotulo.lower()} " if rotulo else ""
         texto = (
             "Contém este livro ( _____ ) folhas, por mim abertas, "
             f"numeradas e rubricadas, e destina-se ao registro do Ponto "
-            f"{_ROTULO_TIPO[tipo].lower()} da {escola.nome}."
+            f"{qualificacao}da {escola.nome}."
         )
     else:
         texto = (
