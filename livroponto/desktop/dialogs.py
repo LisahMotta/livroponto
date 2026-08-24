@@ -46,7 +46,7 @@ def _linha(frame: tk.Widget, r: int, rotulo: str, largura: int = 32) -> tk.Strin
 
 
 class DialogoPessoa(_DialogoBase):
-    def __init__(self, parent: tk.Widget, pessoa: Pessoa | None = None):
+    def __init__(self, parent: tk.Widget, pessoa: Pessoa | None = None, tipo_inicial: TipoServidor | None = None):
         super().__init__(parent, "Editar servidor" if pessoa else "Adicionar servidor")
 
         corpo = ttk.Frame(self, padding=12)
@@ -56,7 +56,8 @@ class DialogoPessoa(_DialogoBase):
 
         r = 0
         ttk.Label(corpo, text="Tipo").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
-        self.var_tipo = tk.StringVar(value=TIPOS_PESSOA[0])
+        valor_tipo_inicial = tipo_inicial.value if tipo_inicial is not None else TIPOS_PESSOA[0]
+        self.var_tipo = tk.StringVar(value=valor_tipo_inicial)
         ttk.Combobox(
             corpo, textvariable=self.var_tipo, values=TIPOS_PESSOA, state="readonly", width=18
         ).grid(row=r, column=1, sticky="w", pady=3)

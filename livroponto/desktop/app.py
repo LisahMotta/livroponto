@@ -89,14 +89,17 @@ class Aplicativo(tk.Tk):
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
 
         aba_escola = ttk.Frame(notebook, padding=12)
-        aba_pessoas = ttk.Frame(notebook)
+        aba_administrativo = ttk.Frame(notebook)
+        aba_gestao = ttk.Frame(notebook)
         aba_excecoes = ttk.Frame(notebook)
         notebook.add(aba_escola, text="Escola")
-        notebook.add(aba_pessoas, text="Servidores, professores e gestão")
+        notebook.add(aba_administrativo, text="Administrativo")
+        notebook.add(aba_gestao, text="Gestão")
         notebook.add(aba_excecoes, text="Feriados e exceções")
 
         self._construir_aba_escola(aba_escola)
-        self._construir_aba_pessoas(aba_pessoas)
+        self.tree_administrativo = self._construir_aba_pessoas_tipo(aba_administrativo, TipoServidor.ADMINISTRATIVO)
+        self.tree_gestao = self._construir_aba_pessoas_tipo(aba_gestao, TipoServidor.GESTAO)
         self._construir_aba_excecoes(aba_excecoes)
 
     def _construir_aba_escola(self, aba: ttk.Frame) -> None:
@@ -138,38 +141,45 @@ class Aplicativo(tk.Tk):
         self.var_uf = campo(8, 0, "UF (feriados)", 6)
         self.var_cidade = campo(8, 2, "Cidade (assinatura dos termos)", 24)
 
-    def _construir_aba_pessoas(self, aba: ttk.Frame) -> None:
+    def _construir_aba_pessoas_tipo(self, aba: ttk.Frame, tipo: TipoServidor) -> ttk.Treeview:
+        """Monta uma aba de cadastro (Treeview + Adicionar/Editar/Remover)
+        filtrada para um único tipo de servidor — Administrativo e Gestão
+        têm cada um a sua, sempre mostrando/criando gente desse tipo."""
         barra = ttk.Frame(aba, padding=(8, 8, 8, 4))
         barra.pack(fill="x")
-        ttk.Button(barra, text="Adicionar", command=self._adicionar_pessoa).pack(side="left")
-        ttk.Button(barra, text="Editar", command=self._editar_pessoa_selecionada).pack(side="left", padx=6)
-        ttk.Button(barra, text="Remover", command=self._remover_pessoa_selecionada).pack(side="left")
+        ttk.Button(barra, text="Adicionar", command=lambda: self._adicionar_pessoa_tipo(tipo)).pack(side="left")
+        ttk.Button(
+            barra, text="Editar", command=lambda: self._editar_pessoa_selecionada_tipo(tipo)
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            barra, text="Remover", command=lambda: self._remover_pessoa_selecionada_tipo(tipo)
+        ).pack(side="left")
         ttk.Label(
             barra, text="  (duplo-clique numa linha também edita)", foreground="grey"
         ).pack(side="left")
 
-        colunas = ("tipo", "nome", "rg", "cargo", "jornada", "ponto")
+        colunas = ("nome", "rg", "cargo", "jornada", "ponto")
         titulos = {
-            "tipo": "Tipo",
             "nome": "Nome",
             "rg": "RG",
             "cargo": "Cargo/Função",
             "jornada": "Jornada",
             "ponto": "Ponto?",
         }
-        larguras = {"tipo": 110, "nome": 240, "rg": 110, "cargo": 240, "jornada": 70, "ponto": 60}
+        larguras = {"nome": 280, "rg": 130, "cargo": 300, "jornada": 80, "ponto": 70}
 
         container = ttk.Frame(aba)
         container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-        self.tree_pessoas = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
+        tree = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
         for c in colunas:
-            self.tree_pessoas.heading(c, text=titulos[c])
-            self.tree_pessoas.column(c, width=larguras[c], anchor="w")
-        scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_pessoas.yview)
-        self.tree_pessoas.configure(yscrollcommand=scroll.set)
-        self.tree_pessoas.pack(side="left", fill="both", expand=True)
+            tree.heading(c, text=titulos[c])
+            tree.column(c, width=larguras[c], anchor="w")
+        scroll = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
-        self.tree_pessoas.bind("<Double-1>", lambda _e: self._editar_pessoa_selecionada())
+        tree.bind("<Double-1>", lambda _e: self._editar_pessoa_selecionada_tipo(tipo))
+        return tree
 
     def _construir_aba_excecoes(self, aba: ttk.Frame) -> None:
         aviso = (
@@ -249,7 +259,7 @@ class Aplicativo(tk.Tk):
 
     def _atualizar_tudo(self) -> None:
         self._atualizar_campos_escola()
-        self._atualizar_lista_pessoas()
+        self._atualizar_listas_pessoas()
         self._atualizar_lista_excecoes()
 
     def _status(self, texto: str) -> None:
@@ -359,54 +369,64 @@ class Aplicativo(tk.Tk):
             _abrir_no_sistema(caminho)
 
     # ------------------------------------------------------------------
-    # Aba Servidores
+    # Abas Administrativo / Gestão
     # ------------------------------------------------------------------
-    def _atualizar_lista_pessoas(self) -> None:
-        """Mostra os servidores ordenados por RG (mesma ordem em que saem
-        as folhas no PDF) — o iid de cada linha continua sendo o índice
-        real em `self.dados.pessoas`, só a ordem de exibição muda."""
-        self.tree_pessoas.delete(*self.tree_pessoas.get_children())
-        pessoas_ordenadas = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
-        for i, p in pessoas_ordenadas:
+    def _tree_do_tipo(self, tipo: TipoServidor) -> ttk.Treeview:
+        return self.tree_administrativo if tipo == TipoServidor.ADMINISTRATIVO else self.tree_gestao
+
+    def _atualizar_lista_pessoas_tipo(self, tipo: TipoServidor) -> None:
+        """Mostra os servidores desse tipo ordenados por RG (mesma ordem em
+        que saem as folhas no PDF) — o iid de cada linha continua sendo o
+        índice real em `self.dados.pessoas`, só a ordem de exibição muda."""
+        tree = self._tree_do_tipo(tipo)
+        tree.delete(*tree.get_children())
+        itens = sorted(
+            ((i, p) for i, p in enumerate(self.dados.pessoas) if p.tipo == tipo),
+            key=lambda item: chave_ordenacao_rg(item[1]),
+        )
+        for i, p in itens:
             jornada = "" if p.jornada_semanal is None else f"{p.jornada_semanal:g}"
-            self.tree_pessoas.insert(
-                "",
-                "end",
-                iid=str(i),
-                values=(p.tipo.value, p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não"),
+            tree.insert(
+                "", "end", iid=str(i), values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não")
             )
 
-    def _pessoa_selecionada(self) -> int | None:
-        sel = self.tree_pessoas.selection()
+    def _atualizar_listas_pessoas(self) -> None:
+        self._atualizar_lista_pessoas_tipo(TipoServidor.ADMINISTRATIVO)
+        self._atualizar_lista_pessoas_tipo(TipoServidor.GESTAO)
+
+    def _pessoa_selecionada_tipo(self, tipo: TipoServidor) -> int | None:
+        sel = self._tree_do_tipo(tipo).selection()
         return int(sel[0]) if sel else None
 
-    def _adicionar_pessoa(self) -> None:
-        dlg = DialogoPessoa(self)
+    def _adicionar_pessoa_tipo(self, tipo: TipoServidor) -> None:
+        dlg = DialogoPessoa(self, tipo_inicial=tipo)
         if dlg.resultado:
             self.dados.pessoas.append(dlg.resultado)
-            self._atualizar_lista_pessoas()
+            self._atualizar_listas_pessoas()
             self._status("Servidor adicionado.")
 
-    def _editar_pessoa_selecionada(self) -> None:
-        idx = self._pessoa_selecionada()
+    def _editar_pessoa_selecionada_tipo(self, tipo: TipoServidor) -> None:
+        idx = self._pessoa_selecionada_tipo(tipo)
         if idx is None:
             messagebox.showinfo("Selecione um servidor", "Clique numa linha da tabela primeiro.", parent=self)
             return
         dlg = DialogoPessoa(self, self.dados.pessoas[idx])
         if dlg.resultado:
             self.dados.pessoas[idx] = dlg.resultado
-            self._atualizar_lista_pessoas()
+            # o tipo pode ter mudado no diálogo (ex.: promovido a Gestão) —
+            # atualiza as duas abas pra pessoa aparecer na certa.
+            self._atualizar_listas_pessoas()
             self._status("Servidor atualizado.")
 
-    def _remover_pessoa_selecionada(self) -> None:
-        idx = self._pessoa_selecionada()
+    def _remover_pessoa_selecionada_tipo(self, tipo: TipoServidor) -> None:
+        idx = self._pessoa_selecionada_tipo(tipo)
         if idx is None:
             messagebox.showinfo("Selecione um servidor", "Clique numa linha da tabela primeiro.", parent=self)
             return
         pessoa = self.dados.pessoas[idx]
         if messagebox.askyesno("Remover servidor", f"Remover {pessoa.nome}?", parent=self):
             del self.dados.pessoas[idx]
-            self._atualizar_lista_pessoas()
+            self._atualizar_listas_pessoas()
             self._status("Servidor removido.")
 
     # ------------------------------------------------------------------

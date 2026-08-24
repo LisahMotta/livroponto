@@ -45,21 +45,40 @@ def _pessoa_exemplo(**overrides) -> Pessoa:
 
 def test_janela_abre_com_abas(app):
     assert app.title() == "Livro Ponto — editor"
-    assert app.tree_pessoas is not None
+    assert app.tree_administrativo is not None
+    assert app.tree_gestao is not None
     assert app.tree_excecoes is not None
 
 
 def test_adicionar_e_remover_pessoa_atualiza_lista(app):
     app.dados.pessoas.append(_pessoa_exemplo())
-    app._atualizar_lista_pessoas()
-    assert len(app.tree_pessoas.get_children()) == 1
+    app._atualizar_listas_pessoas()
+    assert len(app.tree_administrativo.get_children()) == 1
 
-    app.tree_pessoas.selection_set("0")
-    idx = app._pessoa_selecionada()
+    app.tree_administrativo.selection_set("0")
+    idx = app._pessoa_selecionada_tipo(TipoServidor.ADMINISTRATIVO)
     assert idx == 0
     del app.dados.pessoas[idx]
-    app._atualizar_lista_pessoas()
-    assert len(app.tree_pessoas.get_children()) == 0
+    app._atualizar_listas_pessoas()
+    assert len(app.tree_administrativo.get_children()) == 0
+
+
+def test_abas_administrativo_e_gestao_sao_separadas(app):
+    """Cada aba mostra só o tipo dela — Administrativo não mostra gente
+    da Gestão, e vice-versa. Não existe mais uma aba única misturando
+    tudo (nem uma aba de Docentes)."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.dados.pessoas.append(
+        _pessoa_exemplo(nome="Diretora Teste", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    )
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Docente Teste", tipo=TipoServidor.DOCENTE))
+    app._atualizar_listas_pessoas()
+
+    nomes_admin = [app.tree_administrativo.item(iid, "values")[0] for iid in app.tree_administrativo.get_children()]
+    nomes_gestao = [app.tree_gestao.item(iid, "values")[0] for iid in app.tree_gestao.get_children()]
+    assert nomes_admin == ["Administrativo Teste"]
+    assert nomes_gestao == ["Diretora Teste"]
+    assert not hasattr(app, "tree_docente")
 
 
 def test_lista_pessoas_ordenada_por_rg(app):
@@ -70,16 +89,32 @@ def test_lista_pessoas_ordenada_por_rg(app):
     app.dados.pessoas.append(_pessoa_exemplo(nome="RG 30", rg="30"))
     app.dados.pessoas.append(_pessoa_exemplo(nome="RG 9", rg="9"))
     app.dados.pessoas.append(_pessoa_exemplo(nome="RG 15", rg="15"))
-    app._atualizar_lista_pessoas()
+    app._atualizar_listas_pessoas()
 
-    linhas = app.tree_pessoas.get_children()
-    nomes_exibidos = [app.tree_pessoas.item(iid, "values")[1] for iid in linhas]
+    linhas = app.tree_administrativo.get_children()
+    nomes_exibidos = [app.tree_administrativo.item(iid, "values")[0] for iid in linhas]
     assert nomes_exibidos == ["RG 9", "RG 15", "RG 30"]
 
     # a primeira linha exibida (RG 9) é o índice 1 na lista real
-    app.tree_pessoas.selection_set(linhas[0])
-    assert app._pessoa_selecionada() == 1
-    assert app.dados.pessoas[app._pessoa_selecionada()].nome == "RG 9"
+    app.tree_administrativo.selection_set(linhas[0])
+    idx = app._pessoa_selecionada_tipo(TipoServidor.ADMINISTRATIVO)
+    assert idx == 1
+    assert app.dados.pessoas[idx].nome == "RG 9"
+
+
+def test_editar_pessoa_muda_tipo_move_para_outra_aba(app):
+    """Editar um administrativo e trocar o Tipo pra GESTAO no diálogo tem
+    que sumir da aba Administrativo e aparecer na aba Gestão."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Vai Virar Gestor"))
+    app._atualizar_listas_pessoas()
+    app.tree_administrativo.selection_set("0")
+
+    app.dados.pessoas[0] = replace(app.dados.pessoas[0], tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    app._atualizar_listas_pessoas()
+
+    assert len(app.tree_administrativo.get_children()) == 0
+    nomes_gestao = [app.tree_gestao.item(iid, "values")[0] for iid in app.tree_gestao.get_children()]
+    assert nomes_gestao == ["Vai Virar Gestor"]
 
 
 def test_adicionar_excecao_atualiza_lista(app):
@@ -269,6 +304,26 @@ def test_dialogo_pessoa_tipo_gestao_com_jornada_e_horario(app, monkeypatch):
     assert dlg.resultado.entrada == "07:00"
     assert dlg.resultado.saida == "16:00"
     assert dlg.resultado.horario_trabalho == "DAS 07:00 ÀS 16:00"
+
+
+def test_botao_adicionar_da_aba_gestao_abre_dialogo_ja_no_tipo_gestao(app, monkeypatch):
+    """O botão Adicionar da aba Gestão pré-seleciona Tipo=GESTAO no
+    diálogo (e o da aba Administrativo, Tipo=ADMINISTRATIVO) — não
+    precisa trocar manualmente toda vez."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    capturado = {}
+
+    class DialogoPessoaEspiao(DialogoPessoa):
+        def __init__(self, parent, pessoa=None, tipo_inicial=None):
+            capturado["tipo_inicial"] = tipo_inicial
+            super().__init__(parent, pessoa, tipo_inicial)
+            self._cancelar()
+
+    monkeypatch.setattr("livroponto.desktop.app.DialogoPessoa", DialogoPessoaEspiao)
+    app._adicionar_pessoa_tipo(TipoServidor.GESTAO)
+
+    assert capturado["tipo_inicial"] == TipoServidor.GESTAO
 
 
 def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
