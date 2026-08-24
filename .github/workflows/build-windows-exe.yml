@@ -22,6 +22,7 @@ jobs:
         run: >
           pyinstaller --onefile --windowed --name livroponto --noconfirm
           --add-data "livroponto;livroponto"
+          --collect-data ttkbootstrap
           windows_launcher_desktop.py
 
       - name: "Smoke test: módulos empacotados importam"

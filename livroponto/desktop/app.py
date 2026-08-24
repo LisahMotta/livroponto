@@ -18,7 +18,9 @@ import tkinter as tk
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+
+import ttkbootstrap as ttk
 
 from ..calendario import nome_mes
 from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg
@@ -26,6 +28,8 @@ from ..pdf.builder import gerar_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
 from .dialogs import DialogoExcecao, DialogoPessoa
+
+_ICONE = Path(__file__).resolve().parent.parent / "pdf" / "assets" / "brasao_sp.png"
 
 MESES_CAP = [nome_mes(i).capitalize() for i in range(1, 13)]
 
@@ -47,12 +51,14 @@ def _abrir_no_sistema(caminho: str) -> None:
         pass  # não é crítico — o usuário já sabe onde o arquivo ficou
 
 
-class Aplicativo(tk.Tk):
+class Aplicativo(ttk.Window):
     def __init__(self) -> None:
-        super().__init__()
-        self.title("Livro Ponto — editor")
-        self.geometry("1000x650")
+        super().__init__(title="Livro Ponto — editor", themename="bootstrap-light", size=(1000, 650))
         self.minsize(760, 480)
+        try:
+            self.iconphoto(True, tk.PhotoImage(file=str(_ICONE)))
+        except tk.TclError:
+            pass  # ícone é só um detalhe visual — se faltar, o app segue normal
 
         self.dados: LivroPontoConfig = _config_vazio()
         self.caminho_atual: str | None = None
@@ -69,20 +75,33 @@ class Aplicativo(tk.Tk):
     def _construir_barra_ferramentas(self) -> None:
         barra = ttk.Frame(self, padding=(8, 8, 8, 0))
         barra.pack(fill="x")
-        ttk.Button(barra, text="Novo", command=self._novo).pack(side="left")
-        ttk.Button(barra, text="Abrir...", command=self._abrir).pack(side="left", padx=6)
-        ttk.Button(barra, text="Salvar cadastro...", command=self._salvar_cadastro).pack(side="left")
+        ttk.Button(barra, text="Novo", command=self._novo, bootstyle="secondary-outline").pack(side="left")
+        ttk.Button(barra, text="Abrir...", command=self._abrir, bootstyle="secondary-outline").pack(
+            side="left", padx=6
+        )
+        ttk.Button(
+            barra, text="Salvar cadastro...", command=self._salvar_cadastro, bootstyle="secondary-outline"
+        ).pack(side="left")
         ttk.Separator(barra, orient="vertical").pack(side="left", fill="y", padx=10)
-        ttk.Button(barra, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf).pack(side="left")
+        ttk.Button(
+            barra, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf, bootstyle="success"
+        ).pack(side="left")
         ttk.Label(barra, text="Incluir:").pack(side="left", padx=(10, 2))
         self.var_incluir_administrativos = tk.BooleanVar(value=True)
         self.var_incluir_docentes = tk.BooleanVar(value=True)
         self.var_incluir_gestao = tk.BooleanVar(value=True)
-        ttk.Checkbutton(barra, text="Administrativos", variable=self.var_incluir_administrativos).pack(
-            side="left", padx=(0, 6)
-        )
-        ttk.Checkbutton(barra, text="Docentes", variable=self.var_incluir_docentes).pack(side="left", padx=(0, 6))
-        ttk.Checkbutton(barra, text="Trio gestor", variable=self.var_incluir_gestao).pack(side="left")
+        ttk.Checkbutton(
+            barra,
+            text="Administrativos",
+            variable=self.var_incluir_administrativos,
+            bootstyle="round-toggle",
+        ).pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(
+            barra, text="Docentes", variable=self.var_incluir_docentes, bootstyle="round-toggle"
+        ).pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(
+            barra, text="Trio gestor", variable=self.var_incluir_gestao, bootstyle="round-toggle"
+        ).pack(side="left")
 
     def _construir_abas(self) -> None:
         notebook = ttk.Notebook(self)
@@ -147,12 +166,20 @@ class Aplicativo(tk.Tk):
         têm cada um a sua, sempre mostrando/criando gente desse tipo."""
         barra = ttk.Frame(aba, padding=(8, 8, 8, 4))
         barra.pack(fill="x")
-        ttk.Button(barra, text="Adicionar", command=lambda: self._adicionar_pessoa_tipo(tipo)).pack(side="left")
         ttk.Button(
-            barra, text="Editar", command=lambda: self._editar_pessoa_selecionada_tipo(tipo)
+            barra, text="Adicionar", command=lambda: self._adicionar_pessoa_tipo(tipo), bootstyle="primary"
+        ).pack(side="left")
+        ttk.Button(
+            barra,
+            text="Editar",
+            command=lambda: self._editar_pessoa_selecionada_tipo(tipo),
+            bootstyle="info-outline",
         ).pack(side="left", padx=6)
         ttk.Button(
-            barra, text="Remover", command=lambda: self._remover_pessoa_selecionada_tipo(tipo)
+            barra,
+            text="Remover",
+            command=lambda: self._remover_pessoa_selecionada_tipo(tipo),
+            bootstyle="danger-outline",
         ).pack(side="left")
         ttk.Label(
             barra, text="  (duplo-clique numa linha também edita)", foreground="grey"
@@ -194,9 +221,13 @@ class Aplicativo(tk.Tk):
 
         barra = ttk.Frame(aba, padding=(8, 0, 8, 4))
         barra.pack(fill="x")
-        ttk.Button(barra, text="Adicionar", command=self._adicionar_excecao).pack(side="left")
-        ttk.Button(barra, text="Editar", command=self._editar_excecao_selecionada).pack(side="left", padx=6)
-        ttk.Button(barra, text="Remover", command=self._remover_excecao_selecionada).pack(side="left")
+        ttk.Button(barra, text="Adicionar", command=self._adicionar_excecao, bootstyle="primary").pack(side="left")
+        ttk.Button(
+            barra, text="Editar", command=self._editar_excecao_selecionada, bootstyle="info-outline"
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            barra, text="Remover", command=self._remover_excecao_selecionada, bootstyle="danger-outline"
+        ).pack(side="left")
 
         colunas = ("mes", "dia", "tipo", "descricao")
         titulos = {"mes": "Mês", "dia": "Dia", "tipo": "Tipo", "descricao": "Descrição"}

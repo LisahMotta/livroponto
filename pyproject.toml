@@ -13,6 +13,7 @@ dependencies = [
     "pyxlsb>=1.0.10",
     "reportlab>=4.0",
     "holidays>=0.45",
+    "ttkbootstrap>=1.10",
 ]
 
 [project.optional-dependencies]

@@ -3,7 +3,9 @@ exceção de calendário no app desktop."""
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
+
+import ttkbootstrap as ttk
 
 from ..models import DiaNaoLetivo, Pessoa, TipoServidor
 
@@ -62,9 +64,9 @@ class DialogoPessoa(_DialogoBase):
             corpo, textvariable=self.var_tipo, values=TIPOS_PESSOA, state="readonly", width=18
         ).grid(row=r, column=1, sticky="w", pady=3)
         self.var_ponto = tk.BooleanVar(value=True)
-        ttk.Checkbutton(corpo, text="Imprime folha de ponto", variable=self.var_ponto).grid(
-            row=r, column=2, columnspan=2, sticky="w", pady=3
-        )
+        ttk.Checkbutton(
+            corpo, text="Imprime folha de ponto", variable=self.var_ponto, bootstyle="round-toggle"
+        ).grid(row=r, column=2, columnspan=2, sticky="w", pady=3)
         r += 1
 
         self.var_nome = _linha(corpo, r, "Nome")
@@ -139,8 +141,10 @@ class DialogoPessoa(_DialogoBase):
 
         botoes = ttk.Frame(corpo)
         botoes.grid(row=r, column=0, columnspan=4, sticky="e", pady=(12, 0))
-        ttk.Button(botoes, text="Cancelar", command=self._cancelar).pack(side="right", padx=(6, 0))
-        ttk.Button(botoes, text="Salvar", command=self._salvar).pack(side="right")
+        ttk.Button(botoes, text="Cancelar", command=self._cancelar, bootstyle="secondary-outline").pack(
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(botoes, text="Salvar", command=self._salvar, bootstyle="success").pack(side="right")
 
         if pessoa is not None:
             self._preencher(pessoa)
@@ -234,8 +238,10 @@ class DialogoExcecao(_DialogoBase):
 
         botoes = ttk.Frame(corpo)
         botoes.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(botoes, text="Cancelar", command=self._cancelar).pack(side="right", padx=(6, 0))
-        ttk.Button(botoes, text="Salvar", command=self._salvar).pack(side="right")
+        ttk.Button(botoes, text="Cancelar", command=self._cancelar, bootstyle="secondary-outline").pack(
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(botoes, text="Salvar", command=self._salvar, bootstyle="success").pack(side="right")
 
         if excecao is not None:
             self.var_mes.set(str(excecao.mes))
