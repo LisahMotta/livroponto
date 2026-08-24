@@ -33,6 +33,14 @@ _ICONE = Path(__file__).resolve().parent.parent / "pdf" / "assets" / "brasao_sp.
 
 MESES_CAP = [nome_mes(i).capitalize() for i in range(1, 13)]
 
+# Sufixo do nome de arquivo sugerido ao gerar o PDF, na ordem em que deve
+# aparecer quando mais de um tipo está marcado em "Incluir".
+_SUFIXO_ARQUIVO_TIPO = [
+    (TipoServidor.ADMINISTRATIVO, "administrativo"),
+    (TipoServidor.GESTAO, "gestao"),
+    (TipoServidor.DOCENTE, "docente"),
+]
+
 
 def _config_vazio() -> LivroPontoConfig:
     hoje = date.today()
@@ -185,15 +193,16 @@ class Aplicativo(ttk.Window):
             barra, text="  (duplo-clique numa linha também edita)", foreground="grey"
         ).pack(side="left")
 
-        colunas = ("nome", "rg", "cargo", "jornada", "ponto")
+        colunas = ("nome", "rg", "cargo", "jornada", "ponto", "observacoes")
         titulos = {
             "nome": "Nome",
             "rg": "RG",
             "cargo": "Cargo/Função",
             "jornada": "Jornada",
             "ponto": "Ponto?",
+            "observacoes": "Observações",
         }
-        larguras = {"nome": 280, "rg": 130, "cargo": 300, "jornada": 80, "ponto": 70}
+        larguras = {"nome": 220, "rg": 110, "cargo": 220, "jornada": 70, "ponto": 60, "observacoes": 260}
 
         container = ttk.Frame(aba)
         container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -381,7 +390,9 @@ class Aplicativo(ttk.Window):
             )
             return
 
-        nome_sugerido = f"livro_ponto_{self.dados.mes:02d}_{self.dados.ano}.pdf"
+        sufixo = "_".join(s for t, s in _SUFIXO_ARQUIVO_TIPO if t in tipos_incluidos)
+        base = f"livro_ponto_{sufixo}" if sufixo else "livro_ponto"
+        nome_sugerido = f"{base}_{self.dados.mes:02d}_{self.dados.ano}.pdf"
         caminho = filedialog.asksaveasfilename(
             title="Gerar Livro Ponto",
             defaultextension=".pdf",
@@ -418,7 +429,10 @@ class Aplicativo(ttk.Window):
         for i, p in itens:
             jornada = "" if p.jornada_semanal is None else f"{p.jornada_semanal:g}"
             tree.insert(
-                "", "end", iid=str(i), values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não")
+                "",
+                "end",
+                iid=str(i),
+                values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não", p.observacoes),
             )
 
     def _atualizar_listas_pessoas(self) -> None:

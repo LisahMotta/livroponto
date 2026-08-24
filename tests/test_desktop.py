@@ -63,6 +63,16 @@ def test_adicionar_e_remover_pessoa_atualiza_lista(app):
     assert len(app.tree_administrativo.get_children()) == 0
 
 
+def test_lista_pessoas_mostra_coluna_de_observacoes(app):
+    """A observação cadastrada tem que aparecer direto na lista da aba,
+    sem precisar abrir o diálogo de editar pra ver."""
+    app.dados.pessoas.append(_pessoa_exemplo(observacoes="Afastada por licença médica"))
+    app._atualizar_listas_pessoas()
+
+    valores = app.tree_administrativo.item("0", "values")
+    assert valores[-1] == "Afastada por licença médica"
+
+
 def test_abas_administrativo_e_gestao_sao_separadas(app):
     """Cada aba mostra só o tipo dela — Administrativo não mostra gente
     da Gestão, e vice-versa. Não existe mais uma aba única misturando
@@ -203,6 +213,36 @@ def test_gerar_pdf_pelo_botao_respeita_filtro_incluir(app, tmp_path, monkeypatch
     # o PDF gerado pelo botão deve ter tamanho parecido ao gerado só com o
     # administrativo (bem menor do que se tivesse incluído o docente também)
     assert abs(caminho.stat().st_size - caminho_referencia.stat().st_size) < 500
+
+
+def test_gerar_pdf_sugere_nome_de_arquivo_pelo_tipo_incluido(app, tmp_path, monkeypatch):
+    """O nome sugerido no "Salvar como" identifica o livro que está
+    sendo gerado — evita salvar por cima do livro de outro tipo sem
+    perceber."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.dados.pessoas.append(
+        _pessoa_exemplo(nome="Diretora Teste", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    )
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_incluir_docentes.set(False)
+    app.var_incluir_gestao.set(False)
+
+    nomes_sugeridos = []
+
+    def _fake_asksaveasfilename(**kw):
+        nomes_sugeridos.append(kw.get("initialfile"))
+        return str(tmp_path / "saida.pdf")
+
+    monkeypatch.setattr(filedialog, "asksaveasfilename", _fake_asksaveasfilename)
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+    assert nomes_sugeridos[-1].startswith("livro_ponto_administrativo_")
+
+    app.var_incluir_administrativos.set(False)
+    app.var_incluir_gestao.set(True)
+    app._gerar_pdf()
+    assert nomes_sugeridos[-1].startswith("livro_ponto_gestao_")
 
 
 def test_checkboxes_incluir_existem_e_comecam_marcados(app):
