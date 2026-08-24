@@ -1,5 +1,5 @@
 from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor
-from livroponto.pdf.builder import gerar_pdf
+from livroponto.pdf.builder import _chave_ordenacao_rg, gerar_pdf
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -48,3 +48,31 @@ def test_gerar_pdf_sem_pessoas_lanca_erro(tmp_path):
 
     with pytest.raises(ValueError):
         gerar_pdf(config, tmp_path / "vazio.pdf")
+
+
+def test_ordenacao_por_rg_e_numerica_nao_textual():
+    """"9" deve vir antes de "10" (ordem numérica), não depois (ordem de
+    texto, onde "10" < "9")."""
+    nove = Pessoa(nome="Nove", tipo=TipoServidor.ADMINISTRATIVO, rg="9")
+    dez = Pessoa(nome="Dez", tipo=TipoServidor.ADMINISTRATIVO, rg="10")
+
+    ordenados = sorted([dez, nove], key=_chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Nove", "Dez"]
+
+
+def test_ordenacao_por_rg_ignora_pontuacao():
+    """Pontos e traço no RG (ex.: "1.234-5") não devem contar como parte
+    do número na hora de ordenar."""
+    menor = Pessoa(nome="Menor", tipo=TipoServidor.ADMINISTRATIVO, rg="500")
+    maior_pontuado = Pessoa(nome="Maior", tipo=TipoServidor.ADMINISTRATIVO, rg="1.234-5")
+
+    ordenados = sorted([maior_pontuado, menor], key=_chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Menor", "Maior"]
+
+
+def test_ordenacao_por_rg_sem_rg_cadastrado_vai_pro_fim():
+    com_rg = Pessoa(nome="Com RG", tipo=TipoServidor.ADMINISTRATIVO, rg="123")
+    sem_rg = Pessoa(nome="Sem RG", tipo=TipoServidor.ADMINISTRATIVO, rg="")
+
+    ordenados = sorted([sem_rg, com_rg], key=_chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Com RG", "Sem RG"]

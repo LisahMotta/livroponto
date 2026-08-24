@@ -14,6 +14,7 @@ para preenchimento manual. As observações cadastradas para cada servidor
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -78,6 +79,16 @@ _COR_SITUACAO = {
 # Abreviação do dia da semana (convenção "2ª feira" = segunda) usada na
 # coluna "Sem." da Folha de Frequência do docente.
 _ABREV_SEMANA_FREQ = {0: "2ª", 1: "3ª", 2: "4ª", 3: "5ª", 4: "6ª", 5: "S", 6: "D"}
+
+
+def _chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
+    """Ordena as folhas por número de RG (numericamente, não por texto —
+    "9" vem antes de "10"); quem não tem RG cadastrado vai para o fim,
+    ordenado por nome."""
+    digitos = re.sub(r"\D", "", pessoa.rg or "")
+    if digitos:
+        return (0, int(digitos), pessoa.nome)
+    return (1, 0, pessoa.nome)
 
 
 def _truncar(texto: str, limite: int = _LIMITE_OBSERVACAO) -> str:
@@ -784,7 +795,8 @@ def _folha_frequencia_docente(
 
 
 def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> list:
-    pessoas = config.pessoas_por_tipo(tipo)
+    # Páginas em ordem de número de RG (não a ordem do cadastro).
+    pessoas = sorted(config.pessoas_por_tipo(tipo), key=_chave_ordenacao_rg)
     if not pessoas:
         return []
 
