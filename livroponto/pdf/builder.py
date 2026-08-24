@@ -49,6 +49,30 @@ _FRACOES_TABELA_DIAS = [0.0438, 0.0808, 0.1639, 0.0808, 0.1639, 0.3025, 0.1639]
 # Proporções de coluna da seção "Informações financeiras" (6 colunas).
 _FRACOES_FINANCEIRO = [0.1573, 0.2043, 0.1195, 0.2043, 0.2043, 0.1102]
 
+# Rótulo e cor de fundo usados para marcar automaticamente sábados,
+# domingos, feriados e exceções cadastradas (recesso, ponto facultativo
+# etc.) na tabela de dias da folha de ponto administrativa.
+_SIGLA_TIPO = {
+    "FERIADO": "FERIADO",
+    "RECESSO": "RECESSO",
+    "PONTO_FACULTATIVO": "PONTO FACULTATIVO",
+    "SUSPENSAO": "NÃO LETIVO",
+    "SABADO": "SÁBADO",
+    "DOMINGO": "DOMINGO",
+}
+_COR_SITUACAO = {
+    "FERIADO": colors.Color(1, 0.85, 0.85),
+    "RECESSO": colors.Color(0.83, 0.90, 1),
+    "SUSPENSAO": colors.Color(0.90, 0.90, 0.90),
+    "PONTO_FACULTATIVO": colors.Color(1, 0.96, 0.78),
+    "SABADO": colors.whitesmoke,
+    "DOMINGO": colors.whitesmoke,
+}
+
+# Abreviação do dia da semana (convenção "2ª feira" = segunda) usada na
+# coluna "Sem." da Folha de Frequência do docente.
+_ABREV_SEMANA_FREQ = {0: "2ª", 1: "3ª", 2: "4ª", 3: "5ª", 4: "6ª", 5: "S", 6: "D"}
+
 
 def _truncar(texto: str, limite: int = _LIMITE_OBSERVACAO) -> str:
     """Encurta textos livres (ex.: observações) para não estourar a altura
@@ -250,10 +274,12 @@ def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
     return tabela
 
 
-def _tabela_dias(styles) -> Table:
+def _tabela_dias(dias, styles) -> Table:
     """A grade "Dia | Entrada | Saída | Observações | Visto do superior
-    imediato", com as 31 linhas do formulário — sem marcação automática de
-    feriado/fim de semana, para preenchimento manual como no original."""
+    imediato". Sábados, domingos, feriados e exceções cadastradas (recesso,
+    ponto facultativo etc.) são marcados automaticamente — fundo colorido e
+    rótulo, ocupando o espaço de Entrada/Saída; dias úteis ficam em branco
+    para preenchimento manual, como no formulário original."""
     linha_grupo = ["Dia", "Entrada", "", "Saída", "", "Observações", "Visto do superior\nimediato"]
     cabecalho = ["", "Hora", "Assinatura", "Hora", "Assinatura", "", ""]
     dados = [linha_grupo, cabecalho]
@@ -264,8 +290,16 @@ def _tabela_dias(styles) -> Table:
         ("SPAN", (5, 0), (5, 1)),
         ("SPAN", (6, 0), (6, 1)),
     ]
-    for _dia in range(1, 32):
-        dados.append([str(_dia), "", "", "", "", "", ""])
+    for i, dia in enumerate(dias, start=2):
+        if dia.e_dia_normal:
+            dados.append([str(dia.dia), "", "", "", "", "", ""])
+            continue
+        sigla = _SIGLA_TIPO.get(dia.tipo, dia.tipo)
+        texto = f"{sigla} - {dia.rotulo}" if dia.rotulo and dia.rotulo != sigla else sigla
+        dados.append([str(dia.dia), Paragraph(texto, styles["CelTabelaPequena"]), "", "", "", "", ""])
+        estilos_extra.append(("SPAN", (1, i), (4, i)))
+        cor = _COR_SITUACAO.get(dia.tipo, colors.whitesmoke)
+        estilos_extra.append(("BACKGROUND", (0, i), (4, i), cor))
 
     tabela = Table(dados, colWidths=_col_widths(_FRACOES_TABELA_DIAS), repeatRows=2)
     tabela.setStyle(
@@ -364,11 +398,11 @@ def _rodape_assinaturas(styles) -> Table:
     return tabela
 
 
-def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Table:
+def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> Table:
     conteudo = [
         [_cabecalho_formulario(config, styles, mostrar_pag=True)],
         [_bloco_dados_pessoa(pessoa, styles)],
-        [_tabela_dias(styles)],
+        [_tabela_dias(dias, styles)],
         [_secao_financeira(styles)],
         [Spacer(1, 0.4 * cm)],
         [_rodape_assinaturas(styles)],
@@ -475,11 +509,12 @@ def _bloco_dados_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Ta
     return tabela
 
 
-def _tabela_dias_frequencia(styles) -> Table:
+def _tabela_dias_frequencia(dias, styles) -> Table:
     """Grade principal: Dia/Semana, Jornada prevista (Jorn. Dia/Subst.
     Eventual/Reposição/Total Geral), Aulas por período (1ª a 11ª), Total
     (U.E. Local/Geral) e Saldo Pend. Mês Anterior (Natureza/Saldo
-    Pendente/Falta M. Parcial) — em branco, para preenchimento manual."""
+    Pendente/Falta M. Parcial) — dia e dia da semana preenchidos a partir do
+    calendário; o resto fica em branco, para preenchimento manual."""
     C = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
     aulas = [f"{n}ª" for n in range(1, 12)]
     linha0 = (
@@ -503,8 +538,9 @@ def _tabela_dias_frequencia(styles) -> Table:
         ("SPAN", (18, 0), (19, 0)),
         ("SPAN", (20, 0), (22, 0)),
     ]
-    for dia in range(1, 32):
-        dados.append([str(dia)] + [""] * 22)
+    for dia in dias:
+        semana = _ABREV_SEMANA_FREQ[dia.data.weekday()]
+        dados.append(["", str(dia.dia), semana] + [""] * 20)
 
     tabela = Table([[C(c) if isinstance(c, str) and c else c for c in row] for row in dados], colWidths=_COLS_FREQ, repeatRows=2)
     tabela.setStyle(
@@ -667,7 +703,7 @@ def _rodape_frequencia(styles) -> Table:
     return tabela
 
 
-def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Table:
+def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> Table:
     """Folha de Frequência do docente: grade de aulas por dia/período,
     painel de horário semanal e resumo final — formulário próprio,
     diferente da folha de ponto administrativa (aqui não há verso de
@@ -676,7 +712,7 @@ def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) 
         [
             [_cabecalho_frequencia(config, styles)],
             [_bloco_dados_docente(config, pessoa, styles)],
-            [_tabela_dias_frequencia(styles)],
+            [_tabela_dias_frequencia(dias, styles)],
             [Paragraph("<b>Observações:</b>", styles["Campo"])],
             [Spacer(1, 0.9 * cm)],
             [_rodape_frequencia(styles)],
@@ -711,7 +747,7 @@ def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) 
     return outer
 
 
-def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, styles) -> list:
+def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> list:
     pessoas = config.pessoas_por_tipo(tipo)
     if not pessoas:
         return []
@@ -729,11 +765,11 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, styles) -> list:
 
     for pessoa in pessoas:
         if tipo == TipoServidor.ADMINISTRATIVO:
-            elementos.append(_folha_ponto(config, pessoa, styles))
+            elementos.append(_folha_ponto(config, pessoa, dias, styles))
             elementos.append(PageBreak())
             elementos.append(KeepTogether(_folha_consolidacao(config, styles)))
         else:
-            elementos.append(_folha_frequencia_docente(config, pessoa, styles))
+            elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles))
         elementos.append(PageBreak())
 
     elementos += _termo(config, tipo, numero_folhas, encerramento=True, styles=styles)
@@ -756,11 +792,10 @@ def gerar_pdf(
         raise ValueError("Nenhuma pessoa com ponto habilitado para gerar o livro.")
     config = replace(config, pessoas=pessoas_com_ponto)
 
-    # O calendário do mês só é usado para validar mês/ano/feriados
-    # configurados (ex.: erros no UF); a folha de ponto em si não marca
-    # feriados/fins de semana automaticamente — replica o formulário
-    # original, preenchido à mão.
-    montar_calendario(config.ano, config.mes, uf=uf or config.uf, excecoes=config.dias_excecao)
+    # Calendário do mês: marca automaticamente sábados, domingos, feriados
+    # nacionais/estaduais (via `holidays`, pela UF) e as exceções cadastradas
+    # (recesso, ponto facultativo etc.) nas folhas de ponto e de frequência.
+    dias = montar_calendario(config.ano, config.mes, uf=uf or config.uf, excecoes=config.dias_excecao)
     styles = _styles()
 
     doc = SimpleDocTemplate(
@@ -774,8 +809,8 @@ def gerar_pdf(
     )
 
     elementos: list = []
-    elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, styles)
-    elementos += _bloco_tipo(config, TipoServidor.DOCENTE, styles)
+    elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, dias, styles)
+    elementos += _bloco_tipo(config, TipoServidor.DOCENTE, dias, styles)
 
     if elementos and isinstance(elementos[-1], PageBreak):
         elementos.pop()
