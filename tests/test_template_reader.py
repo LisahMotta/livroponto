@@ -78,6 +78,7 @@ def test_salvar_modelo_e_ler_modelo_preservam_trio_gestor(tmp_path):
         escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
         mes=4,
         ano=2026,
+        diretor_nome="Diretora Fictícia",
         pessoas=[
             Pessoa(
                 nome="Diretora Fictícia",

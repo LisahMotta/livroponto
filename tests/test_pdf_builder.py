@@ -143,33 +143,25 @@ def _textos(elementos) -> list[str]:
 
 
 def test_termo_assina_com_nome_do_diretor_cadastrado():
+    """O nome de quem assina "Direção da Unidade Escolar" vem do campo
+    `diretor_nome` (aba Escola) — não mais de uma busca no cadastro da
+    Gestão, que dependia de outra aba e sumia quando ela não entrava no
+    PDF sendo gerado."""
     config = _config_exemplo()
-    config.pessoas += [
-        Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola"),
-        Pessoa(nome="Ciclano Vice", tipo=TipoServidor.GESTAO, cargo="Vice-Diretor(a) de Escola"),
-    ]
-    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
+    config.diretor_nome = "Fulana Diretora"
+    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, encerramento=False, styles=_styles())
     assert "Fulana Diretora" in _textos(elementos)
 
 
-def test_gerar_pdf_so_administrativo_ainda_encontra_diretor_da_gestao(tmp_path, monkeypatch):
-    """Bug real reportado pelo usuário: gerando só o livro administrativo
-    (tipos_incluidos sem GESTAO — equivalente a desmarcar "Trio gestor" em
-    "Incluir" no app desktop), o(a) Diretor(a) de Escola cadastrado na
-    Gestão sumia da assinatura do termo, porque quem chamava gerar_pdf
-    filtrava config.pessoas por tipo ANTES de passar pra cá, removendo a
-    pessoa que nome_diretor() precisa encontrar. gerar_pdf agora só decide
-    quais livros ganham folhas via tipos_incluidos, sem tirar ninguém do
-    config — espiona o config que de fato chega em _bloco_tipo pra provar
-    isso (o PDF final vem comprimido, não dá pra checar o texto direto nos
-    bytes — a cobertura do texto em si já está em
-    test_termo_assina_com_nome_do_diretor_cadastrado)."""
+def test_gerar_pdf_so_administrativo_ainda_assina_com_diretor_do_campo(tmp_path, monkeypatch):
+    """A assinatura do diretor não depende mais de quais tipos estão em
+    tipos_incluidos nem do cadastro de pessoas — gerando só o livro
+    administrativo, o nome cadastrado em `diretor_nome` continua indo pro
+    termo normalmente."""
     import livroponto.pdf.builder as builder_mod
 
     config = _config_exemplo()
-    config.pessoas.append(
-        Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
-    )
+    config.diretor_nome = "Fulana Diretora"
 
     configs_vistos = []
     original = builder_mod._bloco_tipo
@@ -183,16 +175,14 @@ def test_gerar_pdf_so_administrativo_ainda_encontra_diretor_da_gestao(tmp_path, 
     caminho = tmp_path / "livro_ponto.pdf"
     gerar_pdf(config, caminho, tipos_incluidos={TipoServidor.ADMINISTRATIVO})
 
-    # só o bloco administrativo roda — mas o config que ele recebe ainda
-    # tem a diretora da Gestão, então nome_diretor() a encontra.
     assert [tipo for tipo, _ in configs_vistos] == [TipoServidor.ADMINISTRATIVO]
     assert configs_vistos[0][1].nome_diretor() == "Fulana Diretora"
 
 
 def test_termo_sem_diretor_cadastrado_fica_so_com_o_rotulo():
     config = _config_exemplo()
-    assert config.pessoas_por_tipo(TipoServidor.GESTAO) == []
-    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
+    assert config.diretor_nome == ""
+    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, encerramento=False, styles=_styles())
     textos = _textos(elementos)
     idx = textos.index("Direção da Unidade Escolar")
     # sem diretor cadastrado, o rótulo vem logo depois da linha de
@@ -200,12 +190,11 @@ def test_termo_sem_diretor_cadastrado_fica_so_com_o_rotulo():
     assert textos[idx - 1] == "_" * 50
 
 
-def test_nome_diretor_ignora_vice_diretor():
+def test_nome_diretor_vem_do_campo_e_ignora_espacos_em_branco():
     config = _config_exemplo()
-    config.pessoas.append(Pessoa(nome="Ciclano Vice", tipo=TipoServidor.GESTAO, cargo="Vice-Diretor(a) de Escola"))
     assert config.nome_diretor() == ""
 
-    config.pessoas.append(Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola"))
+    config.diretor_nome = "  Fulana Diretora  "
     assert config.nome_diretor() == "Fulana Diretora"
 
 
@@ -324,10 +313,9 @@ def test_termo_deixa_espaco_para_numero_e_extenso_da_quantidade_de_folhas():
     config = _config_exemplo()
     for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.DOCENTE, TipoServidor.GESTAO):
         for encerramento in (False, True):
-            elementos = _termo(config, tipo, numero_folhas=99, encerramento=encerramento, styles=_styles())
+            elementos = _termo(config, tipo, encerramento=encerramento, styles=_styles())
             textos = _textos(elementos)
             assert any("_____ ( _____________________ ) folhas" in t for t in textos)
-            assert not any("99" in t for t in textos)
 
 
 def test_gerar_pdf_inclui_folha_do_trio_gestor(tmp_path):

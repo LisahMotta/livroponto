@@ -58,10 +58,7 @@ def _cmd_gerar(args: argparse.Namespace) -> None:
         )
 
     # Os --somente-* escolhem quais livros ganham folhas, sem tirar ninguém
-    # de config.pessoas antes de chamar gerar_pdf — do contrário, gerar só o
-    # livro administrativo (--somente-administrativos) faria o(a) Diretor(a)
-    # de Escola cadastrado na Gestão sumir da assinatura do termo, já que
-    # nome_diretor() procura o diretor entre todo mundo do cadastro.
+    # de config.pessoas antes de chamar gerar_pdf.
     tipos_incluidos = {
         tipo
         for tipo, somente in (

@@ -246,17 +246,13 @@ def test_gerar_pdf_sugere_nome_de_arquivo_pelo_tipo_incluido(app, tmp_path, monk
 
 
 def test_gerar_pdf_sem_gestao_ainda_leva_diretor_pro_gerar_pdf(app, monkeypatch):
-    """Bug real reportado pelo usuário: desmarcar "Trio gestor" em
-    "Incluir" não pode fazer o(a) Diretor(a) de Escola cadastrado na
-    Gestão sumir do cadastro passado pra gerar_pdf — senão o termo do
-    livro administrativo perde a assinatura automática. O app não filtra
-    mais app.dados.pessoas por tipo antes de chamar gerar_pdf; quem
-    decide quais livros ganham folhas é o parâmetro tipos_incluidos."""
+    """O nome do diretor (campo da aba Escola, sincronizado em
+    self.dados.diretor_nome) tem que ir pro gerar_pdf independente de
+    "Trio gestor" estar marcado em "Incluir" — não depende mais de
+    nenhuma pessoa cadastrada na Gestão."""
     app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
-    app.dados.pessoas.append(
-        _pessoa_exemplo(nome="Diretora Teste", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
-    )
     app.var_nome.set("EE Exemplo Fictício")
+    app.var_diretor.set("Diretora Teste")
     app.var_incluir_gestao.set(False)
 
     chamadas = []
@@ -412,3 +408,75 @@ def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
     dlg._salvar()
 
     assert dlg.resultado == DiaNaoLetivo(mes=4, dia=19, tipo="PONTO_FACULTATIVO", descricao="Teste")
+
+
+def test_aba_termos_existe_com_administrativo_marcado_por_padrao(app):
+    from livroponto.desktop.app import MESES_CAP
+
+    assert app.var_termo_administrativo.get() is True
+    assert app.var_termo_gestao.get() is False
+    assert app.var_termo_docente.get() is False
+    assert app.var_termo_mes.get() in MESES_CAP
+    assert app.var_termo_ano.get() != ""
+
+
+def test_gerar_termos_chama_gerar_termos_pdf_com_mes_ano_e_tipos_escolhidos(app, monkeypatch):
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_diretor.set("Diretora Teste")
+    app.var_termo_mes.set("Setembro")
+    app.var_termo_ano.set("2027")
+    app.var_termo_administrativo.set(True)
+    app.var_termo_gestao.set(True)
+    app.var_termo_docente.set(False)
+
+    chamadas = []
+
+    def _gerar_termos_pdf_espiao(config, caminho, tipos_incluidos, mes, ano):
+        chamadas.append((config, tipos_incluidos, mes, ano))
+        return caminho
+
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "gerar_termos_pdf", _gerar_termos_pdf_espiao)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_termos()
+
+    assert len(chamadas) == 1
+    config_recebido, tipos_incluidos, mes, ano = chamadas[0]
+    assert config_recebido.diretor_nome == "Diretora Teste"
+    assert tipos_incluidos == {TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO}
+    assert mes == 9
+    assert ano == 2027
+
+
+def test_gerar_termos_sem_nenhum_tipo_marcado_avisa_e_nao_gera(app, monkeypatch):
+    app.var_termo_administrativo.set(False)
+    app.var_termo_gestao.set(False)
+    app.var_termo_docente.set(False)
+
+    avisos = []
+    monkeypatch.setattr(messagebox, "showwarning", lambda titulo, msg, **k: avisos.append((titulo, msg)))
+    monkeypatch.setattr(
+        filedialog, "asksaveasfilename", lambda **kw: pytest.fail("não devia chegar a abrir o diálogo de salvar")
+    )
+
+    app._gerar_termos()
+
+    assert len(avisos) == 1
+
+
+def test_gerar_termos_pelo_botao_gera_pdf_de_verdade(app, tmp_path, monkeypatch):
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_diretor.set("Diretora Teste")
+    app.var_termo_administrativo.set(True)
+
+    caminho = tmp_path / "termos.pdf"
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: str(caminho))
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_termos()
+
+    assert caminho.exists()
+    assert caminho.stat().st_size > 500

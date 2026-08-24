@@ -111,6 +111,7 @@ class LivroPontoConfig:
     pessoas: list[Pessoa] = field(default_factory=list)
     livro_numero: str = ""
     cidade_assinatura: str = ""
+    diretor_nome: str = ""
     uf: str = "SP"
     dias_excecao: list[DiaNaoLetivo] = field(default_factory=list)
 
@@ -118,12 +119,10 @@ class LivroPontoConfig:
         return [p for p in self.pessoas if p.tipo == tipo]
 
     def nome_diretor(self) -> str:
-        """Nome do(a) Diretor(a) de Escola cadastrado no trio gestor, se
-        houver ("Vice-Diretor(a)" não conta — o cargo precisa começar com
-        "Diretor"). Retorna string vazia se não houver ninguém cadastrado
-        com esse cargo. Usado para assinar "Direção da Unidade Escolar" nos
-        termos de abertura/encerramento do livro (administrativo/docente)."""
-        for pessoa in self.pessoas_por_tipo(TipoServidor.GESTAO):
-            if pessoa.cargo.strip().lower().startswith("diretor"):
-                return pessoa.nome
-        return ""
+        """Nome de quem assina "Direção da Unidade Escolar" nos termos de
+        abertura/encerramento — vem direto do campo `diretor_nome`
+        cadastrado na aba Escola. Não busca mais no cadastro da Gestão: essa
+        busca (por um cargo começando com "Diretor") dependia de outra aba
+        e de quais tipos estavam marcados em "Incluir" na hora de gerar,
+        e sumia sozinha quando a Gestão não entrava naquele PDF."""
+        return self.diretor_nome.strip()

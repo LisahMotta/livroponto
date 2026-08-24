@@ -149,7 +149,6 @@ def _styles():
 def _termo(
     config: LivroPontoConfig,
     tipo: TipoServidor,
-    numero_folhas: int,
     encerramento: bool,
     styles,
 ) -> list:
@@ -855,14 +854,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
         return []
 
     elementos: list = []
-    if tipo in _TIPOS_FOLHA_PONTO:
-        # duas folhas por pessoa: a folha de ponto e o verso (consolidação).
-        numero_folhas = len(pessoas) * 2 + 2
-    else:
-        # a Folha de Frequência do docente já traz o resumo do mês embutido
-        # (não tem verso/consolidação separada): uma folha por pessoa.
-        numero_folhas = len(pessoas) + 2
-    elementos += _termo(config, tipo, numero_folhas, encerramento=False, styles=styles)
+    elementos += _termo(config, tipo, encerramento=False, styles=styles)
     elementos.append(PageBreak())
 
     # Só as páginas com o nome do servidor (folha de ponto / folha de
@@ -877,7 +869,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
             elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles, numero_pagina))
         elementos.append(PageBreak())
 
-    elementos += _termo(config, tipo, numero_folhas, encerramento=True, styles=styles)
+    elementos += _termo(config, tipo, encerramento=True, styles=styles)
     elementos.append(PageBreak())
     return elementos
 
@@ -894,13 +886,7 @@ def gerar_pdf(
     fica no cadastro (para editar depois) mas não ganha folha impressa.
 
     `tipos_incluidos` escolhe quais dos três livros (administrativo, gestão,
-    docente) de fato ganham folhas — por padrão, os três. Importante: isso
-    NÃO filtra `config.pessoas` antes de montar cada livro, só decide quais
-    `_bloco_tipo` rodam — assim, mesmo gerando só o livro administrativo (com
-    "Trio gestor" desmarcado, por exemplo), o(a) Diretor(a) de Escola
-    cadastrado na Gestão continua sendo encontrado por `nome_diretor()` para
-    assinar o termo. Filtrar `config.pessoas` por tipo *antes* de chamar esta
-    função (como o app desktop já fez no passado) quebra essa assinatura.
+    docente) de fato ganham folhas — por padrão, os três.
     """
     pessoas_com_ponto = [p for p in config.pessoas if p.ponto]
     if not pessoas_com_ponto:
@@ -929,6 +915,50 @@ def gerar_pdf(
     for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO, TipoServidor.DOCENTE):
         if tipo in tipos_incluidos:
             elementos += _bloco_tipo(config, tipo, dias, styles)
+
+    if elementos and isinstance(elementos[-1], PageBreak):
+        elementos.pop()
+
+    doc.build(elementos)
+    return Path(caminho_saida)
+
+
+def gerar_termos_pdf(
+    config: LivroPontoConfig,
+    caminho_saida: str | Path,
+    tipos_incluidos: set[TipoServidor],
+    mes: int,
+    ano: int,
+) -> Path:
+    """Gera um PDF avulso só com os termos de abertura e encerramento — sem
+    as folhas de ponto de ninguém — para imprimir/reimprimir o termo de um
+    mês específico sem precisar gerar o livro inteiro. Um par de termos
+    (abertura + encerramento) por tipo marcado em `tipos_incluidos`, para o
+    mês/ano escolhidos (independentes do mês/ano do resto do cadastro)."""
+    if not tipos_incluidos:
+        raise ValueError("Selecione ao menos um tipo de livro para gerar os termos.")
+
+    config_do_mes = replace(config, mes=mes, ano=ano)
+    styles = _styles()
+
+    doc = SimpleDocTemplate(
+        str(caminho_saida),
+        pagesize=A4,
+        leftMargin=_MARGEM_ESQUERDA,
+        rightMargin=_MARGEM,
+        topMargin=_MARGEM,
+        bottomMargin=_MARGEM,
+        title=f"Termos - {nome_mes(mes)} {ano}",
+    )
+
+    elementos: list = []
+    for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO, TipoServidor.DOCENTE):
+        if tipo not in tipos_incluidos:
+            continue
+        elementos += _termo(config_do_mes, tipo, encerramento=False, styles=styles)
+        elementos.append(PageBreak())
+        elementos += _termo(config_do_mes, tipo, encerramento=True, styles=styles)
+        elementos.append(PageBreak())
 
     if elementos and isinstance(elementos[-1], PageBreak):
         elementos.pop()

@@ -120,6 +120,9 @@ with col6:
     config.cidade_assinatura = st.text_input(
         "Cidade (assinatura dos termos)", config.cidade_assinatura or config.escola.municipio
     )
+config.diretor_nome = st.text_input(
+    "Nome do Diretor(a) (assinatura dos termos)", config.diretor_nome
+)
 
 st.subheader("Servidores e professores")
 st.caption(

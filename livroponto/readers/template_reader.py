@@ -47,7 +47,7 @@ CAMPOS_ESCOLA = [
     ("codigo_cie", "Código CIE"),
 ]
 
-CAMPOS_EXTRAS = ["mes", "ano", "cidade_assinatura", "uf"]
+CAMPOS_EXTRAS = ["mes", "ano", "cidade_assinatura", "diretor_nome", "uf"]
 
 
 def _linha_pessoa(p: Pessoa) -> list:
@@ -107,7 +107,7 @@ def criar_modelo(caminho: str | Path) -> None:
             saida="16:00",
         ),
     ]
-    config = LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas)
+    config = LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas, diretor_nome="Beltrano de Souza")
     salvar_modelo(config, caminho)
 
 
@@ -137,6 +137,7 @@ def salvar_modelo(config: LivroPontoConfig, caminho: str | Path) -> None:
     aba_escola.append(["mes", config.mes])
     aba_escola.append(["ano", config.ano])
     aba_escola.append(["cidade_assinatura", config.cidade_assinatura])
+    aba_escola.append(["diretor_nome", config.diretor_nome])
     aba_escola.append(["uf", config.uf])
 
     aba_pessoas = wb.create_sheet("Pessoas")
@@ -187,6 +188,7 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
     mes = int(campos["mes"])
     ano = int(campos["ano"])
     cidade_assinatura = str(campos.get("cidade_assinatura") or escola.municipio)
+    diretor_nome = str(campos.get("diretor_nome", ""))
     uf = str(campos.get("uf") or "SP")
 
     def _ler_tabela(nome_aba: str) -> tuple[dict[str, int], list[tuple]]:
@@ -269,6 +271,7 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
         ano=ano,
         pessoas=pessoas,
         cidade_assinatura=cidade_assinatura,
+        diretor_nome=diretor_nome,
         uf=uf,
         dias_excecao=dias_excecao,
     )
