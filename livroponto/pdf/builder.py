@@ -122,6 +122,15 @@ def _styles():
     ss.add(
         ParagraphStyle("CampoNome", parent=ss["Campo"], fontSize=13, leading=16, fontName="Helvetica-Bold")
     )
+    # Versão um pouco menor pra folha de frequência do docente: a coluna do
+    # NOME lá é bem mais estreita, e essa folha não tem como quebrar em
+    # duas páginas (layout fixo de uma página só) — com 13pt, um nome
+    # comprido podia estourar a página inteira (LayoutError).
+    ss.add(
+        ParagraphStyle(
+            "CampoNomeDocente", parent=ss["Campo"], fontSize=11, leading=13.5, fontName="Helvetica-Bold"
+        )
+    )
     ss.add(ParagraphStyle("CelTabela", parent=ss["Normal"], fontSize=8, alignment=1, leading=9))
     ss.add(ParagraphStyle("CelTabelaPequena", parent=ss["Normal"], fontSize=7.3, alignment=1, leading=8.3))
     ss.add(ParagraphStyle("ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold"))
@@ -346,8 +355,14 @@ def _tabela_dias(dias, styles) -> Table:
                 ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                # Padding um pouco mais enxuto que o "natural" (1.5) — nos
+                # meses de 31 dias, a tabela inteira (33 linhas: cabeçalho +
+                # dias) mal cabia numa página só, jogando a linha de
+                # assinatura sozinha pra uma segunda folha. Com uma margem
+                # extra de sobra pra ainda caber quando o nome do servidor
+                # (agora maior, 13pt) quebra em duas linhas.
+                ("TOPPADDING", (0, 0), (-1, -1), 1.0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.0),
                 ("BACKGROUND", (0, 0), (-1, 1), colors.lightgrey),
             ]
             + estilos_extra
@@ -471,7 +486,7 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
         [_bloco_dados_pessoa(pessoa, styles)],
         [_tabela_dias(dias, styles)],
         [_secao_financeira(pessoa, styles)],
-        [Spacer(1, 0.4 * cm)],
+        [Spacer(1, 0.25 * cm)],
         [_rodape_assinaturas(styles)],
     ]
     outer = Table(conteudo, colWidths=[_LARGURA_CONTEUDO])
@@ -571,7 +586,7 @@ def _bloco_dados_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Ta
     SUPLEMENTAR/CARGA HORÁRIA, DISCIPLINAS, SEDE DE CONTROLE DE FREQUÊNCIA —
     nos mesmos rótulos do formulário "Folha de Frequência" original."""
     P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
-    P_nome = lambda t: Paragraph(t, styles["CampoNome"])  # noqa: E731
+    P_nome = lambda t: Paragraph(t, styles["CampoNomeDocente"])  # noqa: E731
     linhas = [
         [P_nome(_linha_campo("NOME", pessoa.nome)), P(_linha_campo("RG", pessoa.rg)), P("<b>FAIXA/NÍVEL:</b>")],
         [

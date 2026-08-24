@@ -35,6 +35,50 @@ def _config_exemplo() -> LivroPontoConfig:
     return LivroPontoConfig(escola=escola, mes=4, ano=2026, pessoas=pessoas)
 
 
+def test_folha_ponto_cabe_em_uma_pagina_em_todo_mes_de_31_dias():
+    """Bug real: nos meses de 31 dias (janeiro, março, maio, julho,
+    agosto, outubro, dezembro) a folha de ponto administrativa quase não
+    cabia numa página só — a linha de assinatura acabava pulando pra uma
+    segunda folha."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+
+    from livroponto.pdf.builder import _MARGEM, _folha_ponto
+
+    altura_disponivel = A4[1] - 2 * _MARGEM
+    for mes in (1, 3, 5, 7, 8, 10, 12):
+        config = _config_exemplo()
+        config.mes = mes
+        pessoa = config.pessoas[0]
+        dias = montar_calendario(config.ano, mes, uf=config.uf)
+        tabela = _folha_ponto(config, pessoa, dias, _styles(), numero_pagina=1)
+        _, altura = tabela.wrap(1000, 1000 * cm)
+        assert altura <= altura_disponivel, f"mês {mes} estoura a página (altura={altura})"
+
+
+def test_folha_frequencia_docente_nao_estoura_com_nome_comprido_em_mes_de_31_dias(tmp_path):
+    """Bug real: um nome de docente comprido (que quebra em várias linhas
+    na coluna estreita de NOME) combinado com um mês de 31 dias fazia o
+    reportlab lançar LayoutError — essa folha tem layout fixo de uma
+    página só, sem como quebrar em duas."""
+    config = _config_exemplo()
+    config.mes = 1
+    config.pessoas = [
+        Pessoa(
+            nome="José Carlos Rodrigues de Oliveira Neto Ferreira",
+            tipo=TipoServidor.DOCENTE,
+            cargo="PEB II",
+            rg="9.876.543-2",
+            disciplinas="MATEMÁTICA",
+            categoria="F",
+        )
+    ]
+    caminho = tmp_path / "livro_ponto.pdf"
+    resultado = gerar_pdf(config, caminho)
+    assert resultado.exists()
+    assert resultado.stat().st_size > 1000
+
+
 def test_gerar_pdf_cria_arquivo_nao_vazio(tmp_path):
     caminho = tmp_path / "livro_ponto.pdf"
     resultado = gerar_pdf(_config_exemplo(), caminho)
