@@ -1,19 +1,20 @@
-"""Janelas modais (formulários) para adicionar/editar uma Pessoa, uma
-exceção de calendário ou um membro da equipe gestora no app desktop."""
+"""Janelas modais (formulários) para adicionar/editar uma Pessoa ou uma
+exceção de calendário no app desktop."""
 from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..models import DiaNaoLetivo, MembroGestao, Pessoa, TipoServidor
+from ..models import DiaNaoLetivo, Pessoa, TipoServidor
 
-TIPOS_PESSOA = ["ADMINISTRATIVO", "DOCENTE"]
+TIPOS_PESSOA = ["ADMINISTRATIVO", "DOCENTE", "GESTAO"]
 TIPOS_EXCECAO = ["FERIADO", "RECESSO", "PONTO_FACULTATIVO", "SUSPENSAO", "LETIVO"]
+# Trio gestor — sugestões de Cargo/Função quando Tipo = GESTAO (o campo
+# continua livre, aceita qualquer texto).
 CARGOS_GESTAO = [
     "Diretor(a) de Escola",
     "Vice-Diretor(a) de Escola",
-    "Professor Coordenador Pedagógico",
-    "Secretário(a) de Escola",
+    "Coordenador de Gestão Pedagógica",
 ]
 
 
@@ -69,7 +70,14 @@ class DialogoPessoa(_DialogoBase):
         r += 1
         self.var_rg = _linha(corpo, r, "RG")
         r += 1
-        self.var_cargo = _linha(corpo, r, "Cargo/Função")
+        ttk.Label(corpo, text="Cargo/Função").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
+        self.var_cargo = tk.StringVar()
+        ttk.Combobox(corpo, textvariable=self.var_cargo, values=CARGOS_GESTAO, width=30).grid(
+            row=r, column=1, sticky="we", pady=3
+        )
+        ttk.Label(corpo, text="(trio gestor: escolha ou digite o cargo)", foreground="grey").grid(
+            row=r, column=2, columnspan=2, sticky="w", padx=(12, 0)
+        )
         r += 1
         self.var_observacoes = _linha(corpo, r, "Observações", 40)
         ttk.Label(corpo, text="(ex.: afastamentos — sai impressa na folha de Consolidação)", foreground="grey").grid(
@@ -88,7 +96,7 @@ class DialogoPessoa(_DialogoBase):
         ttk.Separator(corpo).grid(row=r, column=0, columnspan=4, sticky="we", pady=6)
         r += 1
 
-        ttk.Label(corpo, text="— campos de administrativo —", foreground="grey").grid(
+        ttk.Label(corpo, text="— campos de administrativo / trio gestor —", foreground="grey").grid(
             row=r, column=0, columnspan=4, sticky="w"
         )
         r += 1
@@ -254,53 +262,5 @@ class DialogoExcecao(_DialogoBase):
             return
         self.resultado = DiaNaoLetivo(
             mes=mes, dia=dia, tipo=self.var_tipo.get(), descricao=self.var_descricao.get().strip()
-        )
-        self.destroy()
-
-
-class DialogoMembroGestao(_DialogoBase):
-    def __init__(self, parent: tk.Widget, membro: MembroGestao | None = None):
-        super().__init__(parent, "Editar membro da equipe gestora" if membro else "Adicionar membro da equipe gestora")
-
-        corpo = ttk.Frame(self, padding=12)
-        corpo.pack(fill="both", expand=True)
-        corpo.columnconfigure(1, weight=1)
-
-        ttk.Label(corpo, text="Cargo").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=3)
-        self.var_cargo = tk.StringVar(value=CARGOS_GESTAO[0])
-        ttk.Combobox(corpo, textvariable=self.var_cargo, values=CARGOS_GESTAO, width=34).grid(
-            row=0, column=1, sticky="we", pady=3
-        )
-
-        self.var_nome = _linha(corpo, 1, "Nome")
-        self.var_rg = _linha(corpo, 2, "RG")
-
-        botoes = ttk.Frame(corpo)
-        botoes.grid(row=3, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(botoes, text="Cancelar", command=self._cancelar).pack(side="right", padx=(6, 0))
-        ttk.Button(botoes, text="Salvar", command=self._salvar).pack(side="right")
-
-        if membro is not None:
-            self.var_cargo.set(membro.cargo)
-            self.var_nome.set(membro.nome)
-            self.var_rg.set(membro.rg)
-
-        self.bind("<Return>", lambda _e: self._salvar())
-        self.bind("<Escape>", lambda _e: self._cancelar())
-        self._finalizar(parent)
-
-    def _cancelar(self) -> None:
-        self.resultado = None
-        self.destroy()
-
-    def _salvar(self) -> None:
-        nome = self.var_nome.get().strip()
-        if not nome:
-            messagebox.showerror("Faltou o nome", "Informe o nome do membro da equipe gestora.", parent=self)
-            return
-        self.resultado = MembroGestao(
-            nome=nome,
-            cargo=self.var_cargo.get().strip(),
-            rg=self.var_rg.get().strip(),
         )
         self.destroy()

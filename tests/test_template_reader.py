@@ -1,6 +1,6 @@
 from openpyxl import load_workbook
 
-from livroponto.models import DiaNaoLetivo, Escola, LivroPontoConfig, MembroGestao, Pessoa, TipoServidor
+from livroponto.models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
 from livroponto.readers.template_reader import criar_modelo, ler_modelo, salvar_modelo
 
 
@@ -10,7 +10,6 @@ def test_criar_modelo_gera_abas_esperadas(tmp_path):
     wb = load_workbook(caminho)
     assert "Escola" in wb.sheetnames
     assert "Pessoas" in wb.sheetnames
-    assert "EquipeGestora" in wb.sheetnames
 
 
 def test_ler_modelo_roundtrip(tmp_path):
@@ -34,11 +33,10 @@ def test_ler_modelo_roundtrip(tmp_path):
     assert config.escola.nome == "EE Exemplo Fictício"
     assert config.mes == 4
     assert config.ano == 2026
-    assert len(config.pessoas) == 2
+    assert len(config.pessoas) == 3
     tipos = {p.tipo for p in config.pessoas}
-    assert tipos == {TipoServidor.ADMINISTRATIVO, TipoServidor.DOCENTE}
-    assert len(config.equipe_gestora) == 1
-    assert config.equipe_gestora[0].cargo == "Diretor(a) de Escola"
+    assert tipos == {TipoServidor.ADMINISTRATIVO, TipoServidor.DOCENTE, TipoServidor.GESTAO}
+    assert config.nome_diretor() == "Beltrano de Souza"
 
 
 def test_salvar_modelo_e_ler_modelo_preservam_excecoes_e_jornada_codigo(tmp_path):
@@ -75,14 +73,22 @@ def test_salvar_modelo_e_ler_modelo_preservam_excecoes_e_jornada_codigo(tmp_path
     assert recarregado.dias_excecao[0].dia == 8
 
 
-def test_salvar_modelo_e_ler_modelo_preservam_equipe_gestora(tmp_path):
+def test_salvar_modelo_e_ler_modelo_preservam_trio_gestor(tmp_path):
     config = LivroPontoConfig(
         escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
         mes=4,
         ano=2026,
-        equipe_gestora=[
-            MembroGestao(nome="Diretora Fictícia", cargo="Diretor(a) de Escola", rg="1.234.567-8"),
-            MembroGestao(nome="Vice Fictício", cargo="Vice-Diretor(a) de Escola"),
+        pessoas=[
+            Pessoa(
+                nome="Diretora Fictícia",
+                tipo=TipoServidor.GESTAO,
+                cargo="Diretor(a) de Escola",
+                rg="1.234.567-8",
+                jornada_semanal=40,
+                entrada="07:00",
+                saida="16:00",
+            ),
+            Pessoa(nome="Vice Fictício", tipo=TipoServidor.GESTAO, cargo="Vice-Diretor(a) de Escola"),
         ],
     )
 
@@ -90,9 +96,12 @@ def test_salvar_modelo_e_ler_modelo_preservam_equipe_gestora(tmp_path):
     salvar_modelo(config, caminho)
     recarregado = ler_modelo(caminho)
 
-    assert len(recarregado.equipe_gestora) == 2
-    assert recarregado.equipe_gestora[0].nome == "Diretora Fictícia"
-    assert recarregado.equipe_gestora[0].rg == "1.234.567-8"
+    gestao = recarregado.pessoas_por_tipo(TipoServidor.GESTAO)
+    assert len(gestao) == 2
+    assert gestao[0].nome == "Diretora Fictícia"
+    assert gestao[0].rg == "1.234.567-8"
+    assert gestao[0].jornada_semanal == 40
+    assert gestao[0].entrada == "07:00"
     assert recarregado.nome_diretor() == "Diretora Fictícia"
 
 

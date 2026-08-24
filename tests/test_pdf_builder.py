@@ -1,7 +1,8 @@
 from reportlab.platypus import Paragraph
 
-from livroponto.models import Escola, LivroPontoConfig, MembroGestao, Pessoa, TipoServidor, chave_ordenacao_rg
-from livroponto.pdf.builder import _folha_consolidacao, _secao_financeira, _styles, _termo, gerar_pdf
+from livroponto.calendario import montar_calendario
+from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
+from livroponto.pdf.builder import _bloco_tipo, _folha_consolidacao, _secao_financeira, _styles, _termo, gerar_pdf
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -99,17 +100,17 @@ def _textos(elementos) -> list[str]:
 
 def test_termo_assina_com_nome_do_diretor_cadastrado():
     config = _config_exemplo()
-    config.equipe_gestora = [
-        MembroGestao(nome="Fulana Diretora", cargo="Diretor(a) de Escola"),
-        MembroGestao(nome="Ciclano Vice", cargo="Vice-Diretor(a) de Escola"),
+    config.pessoas += [
+        Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola"),
+        Pessoa(nome="Ciclano Vice", tipo=TipoServidor.GESTAO, cargo="Vice-Diretor(a) de Escola"),
     ]
     elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
     assert "Fulana Diretora" in _textos(elementos)
 
 
-def test_termo_sem_equipe_gestora_cadastrada_fica_so_com_o_rotulo():
+def test_termo_sem_diretor_cadastrado_fica_so_com_o_rotulo():
     config = _config_exemplo()
-    assert config.equipe_gestora == []
+    assert config.pessoas_por_tipo(TipoServidor.GESTAO) == []
     elementos = _termo(config, TipoServidor.ADMINISTRATIVO, numero_folhas=5, encerramento=False, styles=_styles())
     textos = _textos(elementos)
     idx = textos.index("Direção da Unidade Escolar")
@@ -120,10 +121,10 @@ def test_termo_sem_equipe_gestora_cadastrada_fica_so_com_o_rotulo():
 
 def test_nome_diretor_ignora_vice_diretor():
     config = _config_exemplo()
-    config.equipe_gestora = [MembroGestao(nome="Ciclano Vice", cargo="Vice-Diretor(a) de Escola")]
+    config.pessoas.append(Pessoa(nome="Ciclano Vice", tipo=TipoServidor.GESTAO, cargo="Vice-Diretor(a) de Escola"))
     assert config.nome_diretor() == ""
 
-    config.equipe_gestora.append(MembroGestao(nome="Fulana Diretora", cargo="Diretor(a) de Escola"))
+    config.pessoas.append(Pessoa(nome="Fulana Diretora", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola"))
     assert config.nome_diretor() == "Fulana Diretora"
 
 
@@ -173,3 +174,44 @@ def test_folha_consolidacao_sem_ferias_nao_anota_nada():
     elementos = _folha_consolidacao(config, pessoa, _styles())
     textos = _textos(elementos)
     assert not any("Férias Regulares" in t for t in textos)
+
+
+def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
+    """O trio gestor usa o mesmo formato de folha de ponto do
+    administrativo (com verso de consolidação), mas em livro próprio,
+    com o rótulo "DO TRIO GESTOR"."""
+    config = _config_exemplo()
+    config.pessoas.append(
+        Pessoa(
+            nome="Diretora Fictícia",
+            tipo=TipoServidor.GESTAO,
+            cargo="Diretor(a) de Escola",
+            rg="5",
+            jornada_semanal=40,
+            entrada="07:00",
+            saida="16:00",
+        )
+    )
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf, excecoes=config.dias_excecao)
+    elementos = _bloco_tipo(config, TipoServidor.GESTAO, dias, _styles())
+    assert elementos
+    assert "DO TRIO GESTOR" in _textos(elementos)
+
+
+def test_gerar_pdf_inclui_folha_do_trio_gestor(tmp_path):
+    config = _config_exemplo()
+    config.pessoas.append(
+        Pessoa(
+            nome="Diretora Fictícia",
+            tipo=TipoServidor.GESTAO,
+            cargo="Diretor(a) de Escola",
+            rg="5",
+            jornada_semanal=40,
+            entrada="07:00",
+            saida="16:00",
+        )
+    )
+    caminho = tmp_path / "livro_ponto.pdf"
+    resultado = gerar_pdf(config, caminho)
+    assert resultado.exists()
+    assert resultado.stat().st_size > 1000

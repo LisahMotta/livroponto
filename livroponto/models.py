@@ -10,6 +10,7 @@ from typing import Optional
 class TipoServidor(str, Enum):
     ADMINISTRATIVO = "ADMINISTRATIVO"
     DOCENTE = "DOCENTE"
+    GESTAO = "GESTAO"  # trio gestor: Diretor(a), Vice-Diretor(a), Coordenador de Gestão Pedagógica
 
 
 @dataclass
@@ -27,7 +28,10 @@ class Escola:
 
 @dataclass
 class Pessoa:
-    """Um servidor (administrativo ou docente) que assina o livro ponto."""
+    """Um servidor (administrativo, docente ou do trio gestor) que assina o
+    livro ponto. O trio gestor (TipoServidor.GESTAO) usa os mesmos campos do
+    administrativo (RG, cargo, jornada semanal, horário) — clocka ponto do
+    mesmo jeito, só entra num livro próprio, separado."""
 
     nome: str
     tipo: TipoServidor
@@ -100,18 +104,6 @@ class DiaNaoLetivo:
 
 
 @dataclass
-class MembroGestao:
-    """Um membro da equipe gestora da escola (direção, vice-direção,
-    coordenação pedagógica, secretaria) — cadastro informativo; o nome
-    do(a) Diretor(a) de Escola cadastrado aqui sai assinando "Direção da
-    Unidade Escolar" nos termos de abertura/encerramento do livro."""
-
-    nome: str
-    cargo: str  # ex.: "Diretor(a) de Escola", "Vice-Diretor(a) de Escola"
-    rg: str = ""
-
-
-@dataclass
 class LivroPontoConfig:
     escola: Escola
     mes: int
@@ -121,17 +113,17 @@ class LivroPontoConfig:
     cidade_assinatura: str = ""
     uf: str = "SP"
     dias_excecao: list[DiaNaoLetivo] = field(default_factory=list)
-    equipe_gestora: list[MembroGestao] = field(default_factory=list)
 
     def pessoas_por_tipo(self, tipo: TipoServidor) -> list[Pessoa]:
         return [p for p in self.pessoas if p.tipo == tipo]
 
     def nome_diretor(self) -> str:
-        """Nome do(a) Diretor(a) de Escola cadastrado na equipe gestora,
-        se houver ("Vice-Diretor(a)" não conta — o cargo precisa começar
-        com "Diretor"). Retorna string vazia se não houver ninguém
-        cadastrado com esse cargo."""
-        for membro in self.equipe_gestora:
-            if membro.cargo.strip().lower().startswith("diretor"):
-                return membro.nome
+        """Nome do(a) Diretor(a) de Escola cadastrado no trio gestor, se
+        houver ("Vice-Diretor(a)" não conta — o cargo precisa começar com
+        "Diretor"). Retorna string vazia se não houver ninguém cadastrado
+        com esse cargo. Usado para assinar "Direção da Unidade Escolar" nos
+        termos de abertura/encerramento do livro (administrativo/docente)."""
+        for pessoa in self.pessoas_por_tipo(TipoServidor.GESTAO):
+            if pessoa.cargo.strip().lower().startswith("diretor"):
+                return pessoa.nome
         return ""

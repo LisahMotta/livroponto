@@ -38,7 +38,13 @@ from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
 _ROTULO_TIPO = {
     TipoServidor.ADMINISTRATIVO: "DO PESSOAL ADMINISTRATIVO",
     TipoServidor.DOCENTE: "DO PESSOAL DOCENTE",
+    TipoServidor.GESTAO: "DO TRIO GESTOR",
 }
+
+# Tipos cuja folha usa o formato administrativo (folha de ponto tradicional
+# + verso de consolidação) — o trio gestor clocka ponto do mesmo jeito que o
+# administrativo, só entra num livro separado.
+_TIPOS_FOLHA_PONTO = {TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO}
 
 _MARGEM = 1.0 * cm
 _MARGEM_ESQUERDA = 3.0 * cm  # mais larga que as demais, para dar espaço à encadernação
@@ -249,7 +255,7 @@ def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
         [P(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", pessoa.rg))],
         [P(_linha_campo("CARGO/FUNÇÃO", pessoa.cargo)), ""],
     ]
-    if pessoa.tipo == TipoServidor.ADMINISTRATIVO:
+    if pessoa.tipo in _TIPOS_FOLHA_PONTO:
         jornada_txt = f"{pessoa.jornada_semanal:g} Horas" if pessoa.jornada_semanal else ""
         linhas.append(
             [P(_linha_campo("JORNADA DE TRABALHO", jornada_txt)), P("<b>REGIME DE PLANTÃO:</b>")]
@@ -802,7 +808,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
         return []
 
     elementos: list = []
-    if tipo == TipoServidor.ADMINISTRATIVO:
+    if tipo in _TIPOS_FOLHA_PONTO:
         # duas folhas por pessoa: a folha de ponto e o verso (consolidação).
         numero_folhas = len(pessoas) * 2 + 2
     else:
@@ -816,7 +822,7 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
     # frequência) são numeradas em "PAG: ___" — o verso de consolidação não
     # entra na numeração.
     for numero_pagina, pessoa in enumerate(pessoas, start=1):
-        if tipo == TipoServidor.ADMINISTRATIVO:
+        if tipo in _TIPOS_FOLHA_PONTO:
             elementos.append(_folha_ponto(config, pessoa, dias, styles, numero_pagina))
             elementos.append(PageBreak())
             elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, styles)))
@@ -862,6 +868,7 @@ def gerar_pdf(
 
     elementos: list = []
     elementos += _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, dias, styles)
+    elementos += _bloco_tipo(config, TipoServidor.GESTAO, dias, styles)
     elementos += _bloco_tipo(config, TipoServidor.DOCENTE, dias, styles)
 
     if elementos and isinstance(elementos[-1], PageBreak):

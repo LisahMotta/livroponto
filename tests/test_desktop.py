@@ -10,7 +10,7 @@ import pytest
 tk = pytest.importorskip("tkinter")
 from tkinter import filedialog, messagebox  # noqa: E402
 
-from livroponto.models import DiaNaoLetivo, MembroGestao, Pessoa, TipoServidor  # noqa: E402
+from livroponto.models import DiaNaoLetivo, Pessoa, TipoServidor  # noqa: E402
 
 try:
     _raiz_teste = tk.Tk()
@@ -19,7 +19,7 @@ except tk.TclError:
     pytest.skip("Sem display utilizável para testes de Tkinter", allow_module_level=True)
 
 from livroponto.desktop.app import Aplicativo  # noqa: E402
-from livroponto.desktop.dialogs import DialogoExcecao, DialogoMembroGestao, DialogoPessoa  # noqa: E402
+from livroponto.desktop.dialogs import DialogoExcecao, DialogoPessoa  # noqa: E402
 
 
 @pytest.fixture
@@ -47,7 +47,6 @@ def test_janela_abre_com_abas(app):
     assert app.title() == "Livro Ponto — editor"
     assert app.tree_pessoas is not None
     assert app.tree_excecoes is not None
-    assert app.tree_gestao is not None
 
 
 def test_adicionar_e_remover_pessoa_atualiza_lista(app):
@@ -174,6 +173,27 @@ def test_gerar_pdf_pelo_botao_respeita_filtro_incluir(app, tmp_path, monkeypatch
 def test_checkboxes_incluir_existem_e_comecam_marcados(app):
     assert app.var_incluir_administrativos.get() is True
     assert app.var_incluir_docentes.get() is True
+    assert app.var_incluir_gestao.get() is True
+
+
+def test_gerar_pdf_pelo_botao_inclui_trio_gestor(app, tmp_path, monkeypatch):
+    """O botão "Gerar Livro Ponto" também gera a folha do trio gestor
+    quando há gente cadastrada com tipo GESTAO e "Trio gestor" marcado
+    em Incluir."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.dados.pessoas.append(
+        _pessoa_exemplo(nome="Diretora Teste", tipo=TipoServidor.GESTAO, cargo="Diretor(a) de Escola")
+    )
+    app.var_nome.set("EE Exemplo Fictício")
+
+    caminho = tmp_path / "livro_ponto.pdf"
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: str(caminho))
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert caminho.exists()
+    assert caminho.stat().st_size > 1000
 
 
 def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):
@@ -228,6 +248,29 @@ def test_dialogo_pessoa_periodo_de_ferias_vai_pro_resultado(app, monkeypatch):
     assert dlg.resultado.periodo_ferias == "03/04/2026 a 02/05/2026"
 
 
+def test_dialogo_pessoa_tipo_gestao_com_jornada_e_horario(app, monkeypatch):
+    """O trio gestor cadastra jornada semanal e horário de entrada/saída
+    do mesmo jeito que o administrativo — mesmos campos do formulário,
+    só muda o Tipo."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    dlg.var_tipo.set("GESTAO")
+    dlg.var_nome.set("Diretora Teste")
+    dlg.var_cargo.set("Diretor(a) de Escola")
+    dlg.var_jornada.set("40")
+    dlg.var_entrada.set("07:00")
+    dlg.var_saida.set("16:00")
+    dlg._salvar()
+
+    assert dlg.resultado.tipo == TipoServidor.GESTAO
+    assert dlg.resultado.cargo == "Diretor(a) de Escola"
+    assert dlg.resultado.jornada_semanal == 40.0
+    assert dlg.resultado.entrada == "07:00"
+    assert dlg.resultado.saida == "16:00"
+    assert dlg.resultado.horario_trabalho == "DAS 07:00 ÀS 16:00"
+
+
 def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
     monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
 
@@ -239,57 +282,3 @@ def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
     dlg._salvar()
 
     assert dlg.resultado == DiaNaoLetivo(mes=4, dia=19, tipo="PONTO_FACULTATIVO", descricao="Teste")
-
-
-def test_adicionar_editar_remover_gestor_atualiza_lista(app):
-    app.dados.equipe_gestora.append(MembroGestao(nome="Diretora Teste", cargo="Diretor(a) de Escola"))
-    app._atualizar_lista_gestao()
-    assert len(app.tree_gestao.get_children()) == 1
-
-    app.tree_gestao.selection_set("0")
-    idx = app._gestor_selecionado()
-    assert idx == 0
-    app.dados.equipe_gestora[idx] = MembroGestao(nome="Diretora Editada", cargo="Diretor(a) de Escola")
-    app._atualizar_lista_gestao()
-    assert app.tree_gestao.item("0", "values")[1] == "Diretora Editada"
-
-    del app.dados.equipe_gestora[idx]
-    app._atualizar_lista_gestao()
-    assert len(app.tree_gestao.get_children()) == 0
-
-
-def test_dialogo_membro_gestao_novo_gera_resultado(app, monkeypatch):
-    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
-
-    dlg = DialogoMembroGestao(app)
-    dlg.var_cargo.set("Diretor(a) de Escola")
-    dlg.var_nome.set("Nova Diretora")
-    dlg.var_rg.set("9.999.999-9")
-    dlg._salvar()
-
-    assert dlg.resultado == MembroGestao(nome="Nova Diretora", cargo="Diretor(a) de Escola", rg="9.999.999-9")
-
-
-def test_dialogo_membro_gestao_sem_nome_nao_gera_resultado(app, monkeypatch):
-    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
-    monkeypatch.setattr("livroponto.desktop.dialogs.messagebox.showerror", lambda *a, **k: None)
-
-    dlg = DialogoMembroGestao(app)
-    dlg._salvar()
-
-    assert dlg.resultado is None
-    dlg.destroy()
-
-
-def test_dialogo_membro_gestao_edicao_preenche_campos_existentes(app, monkeypatch):
-    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
-
-    existente = MembroGestao(nome="Existente", cargo="Vice-Diretor(a) de Escola", rg="1.111.111-1")
-    dlg = DialogoMembroGestao(app, existente)
-
-    assert dlg.var_nome.get() == "Existente"
-    assert dlg.var_cargo.get() == "Vice-Diretor(a) de Escola"
-    assert dlg.var_rg.get() == "1.111.111-1"
-
-    dlg._cancelar()
-    assert dlg.resultado is None

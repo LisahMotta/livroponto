@@ -47,6 +47,8 @@ def _cmd_gerar(args: argparse.Namespace) -> None:
             config.pessoas = config.pessoas_por_tipo(TipoServidor.DOCENTE)
         if args.somente_administrativos:
             config.pessoas = config.pessoas_por_tipo(TipoServidor.ADMINISTRATIVO)
+        if args.somente_gestao:
+            config.pessoas = config.pessoas_por_tipo(TipoServidor.GESTAO)
 
     if args.feriados_extra:
         config.dias_excecao = carregar_dias_excecao(args.feriados_extra)
@@ -69,7 +71,8 @@ def _cmd_gerar(args: argparse.Namespace) -> None:
         f"  Escola: {config.escola.nome or '(não informado)'} | "
         f"Mês/Ano: {config.mes:02d}/{config.ano} | "
         f"{len(config.pessoas_por_tipo(TipoServidor.ADMINISTRATIVO))} administrativo(s), "
-        f"{len(config.pessoas_por_tipo(TipoServidor.DOCENTE))} docente(s)"
+        f"{len(config.pessoas_por_tipo(TipoServidor.DOCENTE))} docente(s), "
+        f"{len(config.pessoas_por_tipo(TipoServidor.GESTAO))} da gestão"
     )
 
 
@@ -144,6 +147,11 @@ def construir_parser() -> argparse.ArgumentParser:
         "--somente-administrativos",
         action="store_true",
         help="Gera o livro apenas para o pessoal administrativo.",
+    )
+    p_gerar.add_argument(
+        "--somente-gestao",
+        action="store_true",
+        help="Gera o livro apenas para o trio gestor (Diretor(a), Vice-Diretor(a), Coordenador de Gestão Pedagógica).",
     )
     p_gerar.set_defaults(func=_cmd_gerar)
 
