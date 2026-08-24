@@ -62,6 +62,26 @@ def test_adicionar_e_remover_pessoa_atualiza_lista(app):
     assert len(app.tree_pessoas.get_children()) == 0
 
 
+def test_lista_pessoas_ordenada_por_rg(app):
+    """A lista mostra os servidores ordenados por RG (mesma ordem das
+    folhas no PDF), mas o iid de cada linha continua apontando pro
+    índice certo em app.dados.pessoas — editar/remover a primeira linha
+    exibida tem que afetar a pessoa certa, não sempre o índice 0."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="RG 30", rg="30"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="RG 9", rg="9"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="RG 15", rg="15"))
+    app._atualizar_lista_pessoas()
+
+    linhas = app.tree_pessoas.get_children()
+    nomes_exibidos = [app.tree_pessoas.item(iid, "values")[1] for iid in linhas]
+    assert nomes_exibidos == ["RG 9", "RG 15", "RG 30"]
+
+    # a primeira linha exibida (RG 9) é o índice 1 na lista real
+    app.tree_pessoas.selection_set(linhas[0])
+    assert app._pessoa_selecionada() == 1
+    assert app.dados.pessoas[app._pessoa_selecionada()].nome == "RG 9"
+
+
 def test_adicionar_excecao_atualiza_lista(app):
     app.dados.dias_excecao.append(DiaNaoLetivo(mes=4, dia=19, tipo="PONTO_FACULTATIVO", descricao="Teste"))
     app._atualizar_lista_excecoes()

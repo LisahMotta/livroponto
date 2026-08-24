@@ -1,6 +1,7 @@
 """Estruturas de dados usadas pelo gerador de Livro Ponto."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -56,6 +57,26 @@ class Pessoa:
         if self.intervalo_inicio and self.intervalo_fim:
             return f"DAS {self.intervalo_inicio} ÀS {self.intervalo_fim}"
         return ""
+
+
+def chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
+    """Chave de ordenação por número de RG — numérica, não textual ("9"
+    vem antes de "10"); quem não tem RG cadastrado vai para o fim,
+    ordenado por nome. Usada tanto na lista de servidores do app desktop
+    quanto na ordem das folhas do PDF gerado, para as duas ficarem
+    consistentes.
+
+    O dígito verificador depois do traço (ex.: "9.876.543-2") não faz
+    parte do número em si — é descartado antes de comparar. Sem isso, um
+    RG com dígito verificador ficaria com um dígito a mais que um RG
+    equivalente sem traço (ex.: "9.876.543-2" -> 98765432, 9 dígitos,
+    contra "16304137" -> 16304137, 8 dígitos) e pareceria maior do que
+    realmente é, saindo antes na ordem quando deveria vir depois."""
+    numero = (pessoa.rg or "").split("-")[0]
+    digitos = re.sub(r"\D", "", numero)
+    if digitos:
+        return (0, int(digitos), pessoa.nome)
+    return (1, 0, pessoa.nome)
 
 
 @dataclass

@@ -1,5 +1,5 @@
-from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor
-from livroponto.pdf.builder import _chave_ordenacao_rg, gerar_pdf
+from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
+from livroponto.pdf.builder import gerar_pdf
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -56,7 +56,7 @@ def test_ordenacao_por_rg_e_numerica_nao_textual():
     nove = Pessoa(nome="Nove", tipo=TipoServidor.ADMINISTRATIVO, rg="9")
     dez = Pessoa(nome="Dez", tipo=TipoServidor.ADMINISTRATIVO, rg="10")
 
-    ordenados = sorted([dez, nove], key=_chave_ordenacao_rg)
+    ordenados = sorted([dez, nove], key=chave_ordenacao_rg)
     assert [p.nome for p in ordenados] == ["Nove", "Dez"]
 
 
@@ -66,13 +66,26 @@ def test_ordenacao_por_rg_ignora_pontuacao():
     menor = Pessoa(nome="Menor", tipo=TipoServidor.ADMINISTRATIVO, rg="500")
     maior_pontuado = Pessoa(nome="Maior", tipo=TipoServidor.ADMINISTRATIVO, rg="1.234-5")
 
-    ordenados = sorted([maior_pontuado, menor], key=_chave_ordenacao_rg)
+    ordenados = sorted([maior_pontuado, menor], key=chave_ordenacao_rg)
     assert [p.nome for p in ordenados] == ["Menor", "Maior"]
+
+
+def test_ordenacao_por_rg_ignora_digito_verificador():
+    """O dígito verificador depois do traço não conta como parte do
+    número — senão um RG com dígito verificador (ex.: "9.876.543-2",
+    que vira 98765432 se o traço não for tratado à parte) fica "maior"
+    só por ter um dígito a mais do que um RG equivalente sem traço
+    (ex.: "16304137"), e sai antes na ordem quando deveria vir depois."""
+    comeca_com_9 = Pessoa(nome="Começa com 9", tipo=TipoServidor.ADMINISTRATIVO, rg="9.876.543-2")
+    comeca_com_16 = Pessoa(nome="Começa com 16", tipo=TipoServidor.ADMINISTRATIVO, rg="16304137")
+
+    ordenados = sorted([comeca_com_16, comeca_com_9], key=chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Começa com 9", "Começa com 16"]
 
 
 def test_ordenacao_por_rg_sem_rg_cadastrado_vai_pro_fim():
     com_rg = Pessoa(nome="Com RG", tipo=TipoServidor.ADMINISTRATIVO, rg="123")
     sem_rg = Pessoa(nome="Sem RG", tipo=TipoServidor.ADMINISTRATIVO, rg="")
 
-    ordenados = sorted([sem_rg, com_rg], key=_chave_ordenacao_rg)
+    ordenados = sorted([sem_rg, com_rg], key=chave_ordenacao_rg)
     assert [p.nome for p in ordenados] == ["Com RG", "Sem RG"]

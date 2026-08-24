@@ -21,7 +21,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..calendario import nome_mes
-from ..models import Escola, LivroPontoConfig, TipoServidor
+from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg
 from ..pdf.builder import gerar_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
@@ -358,8 +358,12 @@ class Aplicativo(tk.Tk):
     # Aba Servidores
     # ------------------------------------------------------------------
     def _atualizar_lista_pessoas(self) -> None:
+        """Mostra os servidores ordenados por RG (mesma ordem em que saem
+        as folhas no PDF) — o iid de cada linha continua sendo o índice
+        real em `self.dados.pessoas`, só a ordem de exibição muda."""
         self.tree_pessoas.delete(*self.tree_pessoas.get_children())
-        for i, p in enumerate(self.dados.pessoas):
+        pessoas_ordenadas = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
+        for i, p in pessoas_ordenadas:
             jornada = "" if p.jornada_semanal is None else f"{p.jornada_semanal:g}"
             self.tree_pessoas.insert(
                 "",
