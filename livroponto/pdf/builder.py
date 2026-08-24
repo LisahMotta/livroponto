@@ -35,13 +35,19 @@ from reportlab.platypus import (
 from ..calendario import montar_calendario, nome_mes
 from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
 
-_ROTULO_TIPO = {
-    TipoServidor.ADMINISTRATIVO: "DO PESSOAL ADMINISTRATIVO",
-    TipoServidor.DOCENTE: "DO PESSOAL DOCENTE",
-    # A pedido: o termo do livro da gestão não imprime "trio gestor" — fica
-    # em branco (sem subtítulo/qualificação de tipo).
-    TipoServidor.GESTAO: "",
+# Qualificação do tipo de servidor, do jeito que sai no formulário oficial
+# (fotografado pelo usuário): "registro do Ponto do Pessoal Administrativo
+# da ..."/"... do Pessoal da Equipe Gestora da ...". Não usa "trio gestor"
+# em lugar nenhum — o nome oficial do formulário é "Equipe Gestora".
+_QUALIFICACAO_TIPO = {
+    TipoServidor.ADMINISTRATIVO: "Pessoal Administrativo",
+    TipoServidor.DOCENTE: "Pessoal Docente",
+    TipoServidor.GESTAO: "Pessoal da Equipe Gestora",
 }
+
+# Mesma qualificação, em caixa alta, para o subtítulo abaixo de "LIVRO
+# PONTO" na página do termo.
+_ROTULO_TIPO = {tipo: f"DO {qualificacao.upper()}" for tipo, qualificacao in _QUALIFICACAO_TIPO.items()}
 
 # Tipos cuja folha usa o formato administrativo (folha de ponto tradicional
 # + verso de consolidação) — o trio gestor clocka ponto do mesmo jeito que o
@@ -161,18 +167,19 @@ def _termo(
 
     # A quantidade de folhas fica em branco tanto no termo de abertura quanto
     # no de encerramento, para preenchimento manual — pode mudar durante o
-    # mês (servidor incluído/excluído do livro).
+    # mês (servidor incluído/excluído do livro) — com espaço tanto para o
+    # número quanto para escrever por extenso, igual ao formulário oficial
+    # ("Contém este livro 07 (Sete) folhas...").
+    _BLANK_FOLHAS = "_____ ( _____________________ )"
     if not encerramento:
-        rotulo = _ROTULO_TIPO[tipo]
-        qualificacao = f"{rotulo.lower()} " if rotulo else ""
         texto = (
-            "Contém este livro ( _____ ) folhas, por mim abertas, "
+            f"Contém este livro {_BLANK_FOLHAS} folhas, por mim abertas, "
             f"numeradas e rubricadas, e destina-se ao registro do Ponto "
-            f"{qualificacao}da {escola.nome}."
+            f"do {_QUALIFICACAO_TIPO[tipo]} da {escola.nome}."
         )
     else:
         texto = (
-            "Contém este livro ( _____ ) folhas, por mim abertas, "
+            f"Contém este livro {_BLANK_FOLHAS} folhas, por mim abertas, "
             "numeradas e rubricadas e encerradas, e se destinou ao uso no "
             "termo de abertura indicado."
         )

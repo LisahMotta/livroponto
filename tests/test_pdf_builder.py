@@ -178,9 +178,10 @@ def test_folha_consolidacao_sem_ferias_nao_anota_nada():
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
     """O trio gestor usa o mesmo formato de folha de ponto do
-    administrativo (com verso de consolidação), em livro próprio — mas,
-    a pedido, o termo desse livro não imprime "trio gestor" em lugar
-    nenhum (fica em branco, sem qualificação de tipo)."""
+    administrativo (com verso de consolidação), em livro próprio — o
+    termo desse livro usa o nome oficial "Equipe Gestora" (nunca "trio
+    gestor"), igual ao formulário real fotografado pelo usuário:
+    "registro do Ponto do Pessoal da Equipe Gestora da ..."."""
     config = _config_exemplo()
     config.pessoas.append(
         Pessoa(
@@ -197,8 +198,24 @@ def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():
     elementos = _bloco_tipo(config, TipoServidor.GESTAO, dias, _styles())
     assert elementos
     textos = _textos(elementos)
-    assert not any("trio gestor" in t.lower() or "TRIO GESTOR" in t for t in textos)
+    assert not any("trio gestor" in t.lower() for t in textos)
     assert "LIVRO PONTO" in textos
+    assert any("Pessoal da Equipe Gestora" in t for t in textos)
+    assert any("registro do Ponto do Pessoal da Equipe Gestora da" in t for t in textos)
+
+
+def test_termo_deixa_espaco_para_numero_e_extenso_da_quantidade_de_folhas():
+    """O formulário oficial tem dois espaços em branco pra quantidade de
+    folhas: o número ("07") e, entre parênteses, por extenso ("Sete") —
+    os dois ficam em branco para preenchimento manual, em todo tipo e
+    em ambos os termos (abertura e encerramento)."""
+    config = _config_exemplo()
+    for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.DOCENTE, TipoServidor.GESTAO):
+        for encerramento in (False, True):
+            elementos = _termo(config, tipo, numero_folhas=99, encerramento=encerramento, styles=_styles())
+            textos = _textos(elementos)
+            assert any("_____ ( _____________________ ) folhas" in t for t in textos)
+            assert not any("99" in t for t in textos)
 
 
 def test_gerar_pdf_inclui_folha_do_trio_gestor(tmp_path):
