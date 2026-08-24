@@ -1,7 +1,7 @@
 from reportlab.platypus import Paragraph
 
 from livroponto.models import Escola, LivroPontoConfig, MembroGestao, Pessoa, TipoServidor, chave_ordenacao_rg
-from livroponto.pdf.builder import _styles, _termo, gerar_pdf
+from livroponto.pdf.builder import _folha_consolidacao, _secao_financeira, _styles, _termo, gerar_pdf
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -125,3 +125,51 @@ def test_nome_diretor_ignora_vice_diretor():
 
     config.equipe_gestora.append(MembroGestao(nome="Fulana Diretora", cargo="Diretor(a) de Escola"))
     assert config.nome_diretor() == "Fulana Diretora"
+
+
+def test_pessoa_periodo_ferias():
+    sem_ferias = Pessoa(nome="Sem Férias", tipo=TipoServidor.ADMINISTRATIVO)
+    assert sem_ferias.periodo_ferias == ""
+
+    so_inicio = Pessoa(nome="Só início", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026")
+    assert so_inicio.periodo_ferias == ""  # precisa das duas datas
+
+    com_ferias = Pessoa(
+        nome="Com Férias", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
+    )
+    assert com_ferias.periodo_ferias == "03/04/2026 a 02/05/2026"
+
+
+def test_secao_financeira_preenche_ferias_cadastradas():
+    pessoa = Pessoa(
+        nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
+    )
+    tabela = _secao_financeira(pessoa, _styles())
+    linha_ferias = tabela._cellvalues[1][1]
+    assert "03/04/2026" in linha_ferias.text
+    assert "02/05/2026" in linha_ferias.text
+
+
+def test_secao_financeira_sem_ferias_cadastradas_fica_em_branco():
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
+    tabela = _secao_financeira(pessoa, _styles())
+    linha_ferias = tabela._cellvalues[1][1]
+    assert "___/___/___" in linha_ferias.text
+
+
+def test_folha_consolidacao_anota_ferias_regulares_no_verso():
+    config = _config_exemplo()
+    pessoa = Pessoa(
+        nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
+    )
+    elementos = _folha_consolidacao(config, pessoa, _styles())
+    textos = _textos(elementos)
+    assert any("Férias Regulares" in t and "03/04/2026 a 02/05/2026" in t for t in textos)
+
+
+def test_folha_consolidacao_sem_ferias_nao_anota_nada():
+    config = _config_exemplo()
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
+    elementos = _folha_consolidacao(config, pessoa, _styles())
+    textos = _textos(elementos)
+    assert not any("Férias Regulares" in t for t in textos)

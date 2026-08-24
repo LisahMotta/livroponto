@@ -333,16 +333,20 @@ def _tabela_dias(dias, styles) -> Table:
     return tabela
 
 
-def _secao_financeira(styles) -> Table:
+def _secao_financeira(pessoa: Pessoa, styles) -> Table:
     """Rodapé "INFORMAÇÕES FINANCEIRAS" (férias, GTN, ACA, serviço
-    extraordinário, substituição eventual, vale transporte) — campos em
-    branco para preenchimento manual, igual ao formulário original."""
+    extraordinário, substituição eventual, vale transporte). O período de
+    férias sai preenchido automaticamente se cadastrado para o servidor;
+    os demais campos ficam em branco para preenchimento manual, igual ao
+    formulário original."""
     P = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
+    ferias_de = pessoa.ferias_inicio or "___/___/___"
+    ferias_ate = pessoa.ferias_fim or "___/___/___"
     dados = [
         ["INFORMAÇÕES FINANCEIRAS", "", "", "", "", ""],
         [
             P("<b>FÉRIAS</b>"),
-            P("DE ___/___/___<br/>ATÉ ___/___/___"),
+            P(f"DE {ferias_de}<br/>ATÉ {ferias_ate}"),
             P("MÉDIA DE GTN"),
             P("<b>ACA</b>"),
             P("DE ___/___/___<br/>ATÉ ___/___/___"),
@@ -428,7 +432,7 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
         [_cabecalho_formulario(config, styles, numero_pagina)],
         [_bloco_dados_pessoa(pessoa, styles)],
         [_tabela_dias(dias, styles)],
-        [_secao_financeira(styles)],
+        [_secao_financeira(pessoa, styles)],
         [Spacer(1, 0.4 * cm)],
         [_rodape_assinaturas(styles)],
     ]
@@ -449,23 +453,29 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
 
 def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, styles) -> list:
     """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
-    CONSOLIDAÇÃO, as observações cadastradas para o servidor (ex.:
-    afastamentos — ver campo "Observações" no cadastro) já impressas, e o
-    espaço pautado restante para anotações manuscritas, com o fecho de data
-    e assinatura do superior imediato — igual ao formulário original."""
+    CONSOLIDAÇÃO, as anotações automáticas do servidor já impressas (férias
+    regulares cadastradas e observações — ex.: afastamentos), e o espaço
+    pautado restante para anotações manuscritas, com o fecho de data e
+    assinatura do superior imediato — igual ao formulário original."""
     elementos = [_cabecalho_formulario(config, styles, numero_pagina=None)]
     elementos.append(Spacer(1, 0.3 * cm))
     elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
     elementos.append(Spacer(1, 0.25 * cm))
 
-    total_linhas = 25
+    anotacoes = []
+    if pessoa.periodo_ferias:
+        anotacoes.append(Paragraph(f"<b>Férias Regulares</b> de {pessoa.periodo_ferias}", styles["Campo"]))
     if pessoa.observacoes:
-        obs = Paragraph(f"<b>OBSERVAÇÕES:</b> {_truncar(pessoa.observacoes, 400)}", styles["Campo"])
-        _largura_obs, altura_obs = obs.wrap(_LARGURA_CONTEUDO, 100 * cm)
-        linhas_ocupadas = math.ceil((altura_obs + 0.3 * cm) / (0.72 * cm))
+        anotacoes.append(Paragraph(f"<b>OBSERVAÇÕES:</b> {_truncar(pessoa.observacoes, 400)}", styles["Campo"]))
+
+    total_linhas = 25
+    if anotacoes:
+        altura_total = sum(a.wrap(_LARGURA_CONTEUDO, 100 * cm)[1] + 0.3 * cm for a in anotacoes)
+        linhas_ocupadas = math.ceil(altura_total / (0.72 * cm))
         total_linhas = max(10, 25 - linhas_ocupadas)
-        elementos.append(obs)
-        elementos.append(Spacer(1, 0.3 * cm))
+        for anotacao in anotacoes:
+            elementos.append(anotacao)
+            elementos.append(Spacer(1, 0.3 * cm))
 
     linhas_pautadas = [[""] for _ in range(total_linhas)]
     tabela_pauta = Table(linhas_pautadas, colWidths=[_LARGURA_CONTEUDO], rowHeights=[0.72 * cm] * total_linhas)

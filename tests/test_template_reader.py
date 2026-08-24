@@ -94,3 +94,28 @@ def test_salvar_modelo_e_ler_modelo_preservam_equipe_gestora(tmp_path):
     assert recarregado.equipe_gestora[0].nome == "Diretora Fictícia"
     assert recarregado.equipe_gestora[0].rg == "1.234.567-8"
     assert recarregado.nome_diretor() == "Diretora Fictícia"
+
+
+def test_salvar_modelo_e_ler_modelo_preservam_periodo_de_ferias(tmp_path):
+    config = LivroPontoConfig(
+        escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
+        mes=4,
+        ano=2026,
+        pessoas=[
+            Pessoa(
+                nome="Servidor Fictício",
+                tipo=TipoServidor.ADMINISTRATIVO,
+                rg="1.111.111-1",
+                ferias_inicio="03/04/2026",
+                ferias_fim="02/05/2026",
+            ),
+        ],
+    )
+
+    caminho = tmp_path / "modelo.xlsx"
+    salvar_modelo(config, caminho)
+    recarregado = ler_modelo(caminho)
+
+    assert recarregado.pessoas[0].ferias_inicio == "03/04/2026"
+    assert recarregado.pessoas[0].ferias_fim == "02/05/2026"
+    assert recarregado.pessoas[0].periodo_ferias == "03/04/2026 a 02/05/2026"

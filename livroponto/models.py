@@ -44,6 +44,8 @@ class Pessoa:
     situacao: str = ""
     jornada_codigo: str = ""  # p.ex. R/I/B/C (Reduzida/Inicial/Básica/Integral) — só docentes
     observacoes: str = ""
+    ferias_inicio: str = ""  # ex.: "03/04/2026" — data livre, sem formato fixo
+    ferias_fim: str = ""
     seq: Optional[int] = None
 
     @property
@@ -56,6 +58,12 @@ class Pessoa:
     def intervalo(self) -> str:
         if self.intervalo_inicio and self.intervalo_fim:
             return f"DAS {self.intervalo_inicio} ÀS {self.intervalo_fim}"
+        return ""
+
+    @property
+    def periodo_ferias(self) -> str:
+        if self.ferias_inicio and self.ferias_fim:
+            return f"{self.ferias_inicio} a {self.ferias_fim}"
         return ""
 
 

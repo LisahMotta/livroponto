@@ -214,6 +214,20 @@ def test_dialogo_pessoa_edicao_preenche_campos_existentes(app, monkeypatch):
     assert dlg.resultado is None
 
 
+def test_dialogo_pessoa_periodo_de_ferias_vai_pro_resultado(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    dlg.var_nome.set("Servidor Com Férias")
+    dlg.var_ferias_inicio.set("03/04/2026")
+    dlg.var_ferias_fim.set("02/05/2026")
+    dlg._salvar()
+
+    assert dlg.resultado.ferias_inicio == "03/04/2026"
+    assert dlg.resultado.ferias_fim == "02/05/2026"
+    assert dlg.resultado.periodo_ferias == "03/04/2026 a 02/05/2026"
+
+
 def test_dialogo_excecao_novo_gera_resultado(app, monkeypatch):
     monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
 
