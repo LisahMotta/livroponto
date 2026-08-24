@@ -41,7 +41,8 @@ _ROTULO_TIPO = {
 }
 
 _MARGEM = 1.0 * cm
-_LARGURA_CONTEUDO = A4[0] - 2 * _MARGEM
+_MARGEM_ESQUERDA = 3.0 * cm  # mais larga que as demais, para dar espaço à encadernação
+_LARGURA_CONTEUDO = A4[0] - _MARGEM_ESQUERDA - _MARGEM
 _LIMITE_OBSERVACAO = 170
 _LOGO_SP = Path(__file__).resolve().parent / "assets" / "brasao_sp.png"
 
@@ -151,8 +152,12 @@ def _termo(
     elementos.append(Spacer(1, 0.4 * cm))
 
     if not encerramento:
+        # A quantidade de folhas fica em branco no termo de abertura — pode
+        # mudar durante o mês (servidor incluído/excluído do livro) — e só é
+        # preenchida (à mão) na abertura ou confirmada no termo de
+        # encerramento, quando o número final já está fechado.
         texto = (
-            f"Contém este livro ( {numero_folhas} ) folhas, por mim abertas, "
+            "Contém este livro ( _____ ) folhas, por mim abertas, "
             f"numeradas e rubricadas, e destina-se ao registro do Ponto "
             f"{_ROTULO_TIPO[tipo].lower()} da {escola.nome}."
         )
@@ -182,11 +187,12 @@ def _col_widths(fracoes: list[float]) -> list[float]:
     return [f * _LARGURA_CONTEUDO for f in fracoes]
 
 
-def _cabecalho_formulario(config: LivroPontoConfig, styles, mostrar_pag: bool) -> Table:
+def _cabecalho_formulario(config: LivroPontoConfig, styles, numero_pagina: int | None) -> Table:
     """Cabeçalho do formulário oficial: brasão à esquerda, "GOVERNO DO
     ESTADO DE SÃO PAULO / SECRETARIA DE ESTADO DA EDUCAÇÃO / Unidade: ... /
-    Registro de Ponto Mês/Ano: ..." ao centro, e "PAG: ____" no canto
-    superior direito (só na folha de ponto, não no verso)."""
+    Registro de Ponto Mês/Ano: ..." ao centro, e "PAG: <número>" no canto
+    superior direito — só na folha de ponto (uma página por servidor dentro
+    do livro), não no verso de consolidação, que não é numerado."""
     escola = config.escola
     texto_central = Paragraph(
         "GOVERNO DO ESTADO DE SÃO PAULO<br/>"
@@ -195,7 +201,7 @@ def _cabecalho_formulario(config: LivroPontoConfig, styles, mostrar_pag: bool) -
         f"REGISTRO DE PONTO MÊS/ANO: {nome_mes(config.mes).upper()} DE {config.ano}",
         styles["GovernoTitulo"],
     )
-    pag = Paragraph("PAG: ____", styles["PagRotulo"]) if mostrar_pag else ""
+    pag = Paragraph(f"PAG: {numero_pagina}", styles["PagRotulo"]) if numero_pagina is not None else ""
 
     try:
         logo = Image(str(_LOGO_SP), width=1.55 * cm, height=1.7 * cm)
@@ -338,7 +344,7 @@ def _secao_financeira(styles) -> Table:
             P("MÉDIA DE GTN"),
             P("<b>ACA</b>"),
             P("DE ___/___/___<br/>ATÉ ___/___/___"),
-            P("QUANTIDADE"),
+            P("QTDE."),
         ],
         [
             P("<b>GTN</b>"),
@@ -346,7 +352,7 @@ def _secao_financeira(styles) -> Table:
             P("20% &nbsp;&nbsp; 10%"),
             P("SERVIÇO<br/>EXTRAORDINÁRIO"),
             P("DE ___/___/___<br/>ATÉ ___/___/___"),
-            P("QUANTIDADE"),
+            P("QTDE."),
         ],
         [
             P("<b>SUBSTITUIÇÃO<br/>EVENTUAL</b>"),
@@ -384,7 +390,7 @@ def _rodape_assinaturas(styles) -> Table:
     """Linha de assinaturas, com um espaço em branco real entre a do
     servidor e a do superior imediato — para não parecerem "coladas"."""
     linhas = [
-        ["_" * 36, "", "_" * 36, "", ""],
+        ["_" * 27, "", "_" * 27, "", ""],
         [
             Paragraph("ASSINATURA DO SERVIDOR", styles["CelTabelaPequena"]),
             "",
@@ -394,11 +400,11 @@ def _rodape_assinaturas(styles) -> Table:
         ],
     ]
     larguras = [
-        _LARGURA_CONTEUDO * 0.36,
-        _LARGURA_CONTEUDO * 0.06,
-        _LARGURA_CONTEUDO * 0.36,
-        _LARGURA_CONTEUDO * 0.04,
-        _LARGURA_CONTEUDO * 0.18,
+        _LARGURA_CONTEUDO * 0.35,
+        _LARGURA_CONTEUDO * 0.05,
+        _LARGURA_CONTEUDO * 0.35,
+        _LARGURA_CONTEUDO * 0.03,
+        _LARGURA_CONTEUDO * 0.22,
     ]
     tabela = Table(linhas, colWidths=larguras)
     tabela.setStyle(
@@ -415,9 +421,9 @@ def _rodape_assinaturas(styles) -> Table:
     return tabela
 
 
-def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> Table:
+def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_pagina: int) -> Table:
     conteudo = [
-        [_cabecalho_formulario(config, styles, mostrar_pag=True)],
+        [_cabecalho_formulario(config, styles, numero_pagina)],
         [_bloco_dados_pessoa(pessoa, styles)],
         [_tabela_dias(dias, styles)],
         [_secao_financeira(styles)],
@@ -445,7 +451,7 @@ def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, styles) -> lis
     afastamentos — ver campo "Observações" no cadastro) já impressas, e o
     espaço pautado restante para anotações manuscritas, com o fecho de data
     e assinatura do superior imediato — igual ao formulário original."""
-    elementos = [_cabecalho_formulario(config, styles, mostrar_pag=False)]
+    elementos = [_cabecalho_formulario(config, styles, numero_pagina=None)]
     elementos.append(Spacer(1, 0.3 * cm))
     elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
     elementos.append(Spacer(1, 0.25 * cm))
@@ -484,13 +490,13 @@ _LARGURA_FREQ_ASSINATURAS = _LARGURA_FREQ_PRINCIPAL - 22 * _LARGURA_FREQ_ESTREIT
 _COLS_FREQ = [_LARGURA_FREQ_ASSINATURAS] + [_LARGURA_FREQ_ESTREITA] * 22
 
 
-def _cabecalho_frequencia(config: LivroPontoConfig, styles) -> Table:
+def _cabecalho_frequencia(config: LivroPontoConfig, styles, numero_pagina: int) -> Table:
     titulo = Paragraph(
         f"FOLHA DE FREQUÊNCIA &nbsp;&nbsp;&nbsp; {nome_mes(config.mes).upper()} DE {config.ano}",
         styles["GovernoTitulo"],
     )
-    pag = Paragraph("PAG: ____", styles["PagRotulo"])
-    tabela = Table([[titulo, pag]], colWidths=[_LARGURA_CONTEUDO - 2.8 * cm, 2.8 * cm])
+    pag = Paragraph(f"PAG: {numero_pagina}", styles["PagRotulo"])
+    tabela = Table([[titulo, pag]], colWidths=[_LARGURA_FREQ_PRINCIPAL - 2.2 * cm, 2.2 * cm])
     tabela.setStyle(
         TableStyle(
             [
@@ -731,14 +737,16 @@ def _rodape_frequencia(styles) -> Table:
     return tabela
 
 
-def _folha_frequencia_docente(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> Table:
+def _folha_frequencia_docente(
+    config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_pagina: int
+) -> Table:
     """Folha de Frequência do docente: grade de aulas por dia/período,
     painel de horário semanal e resumo final — formulário próprio,
     diferente da folha de ponto administrativa (aqui não há verso de
     consolidação: o resumo final já vem embutido na própria folha)."""
     coluna_principal = Table(
         [
-            [_cabecalho_frequencia(config, styles)],
+            [_cabecalho_frequencia(config, styles, numero_pagina)],
             [_bloco_dados_docente(config, pessoa, styles)],
             [_tabela_dias_frequencia(dias, styles)],
             [Paragraph("<b>Observações:</b>", styles["Campo"])],
@@ -791,13 +799,16 @@ def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> l
     elementos += _termo(config, tipo, numero_folhas, encerramento=False, styles=styles)
     elementos.append(PageBreak())
 
-    for pessoa in pessoas:
+    # Só as páginas com o nome do servidor (folha de ponto / folha de
+    # frequência) são numeradas em "PAG: ___" — o verso de consolidação não
+    # entra na numeração.
+    for numero_pagina, pessoa in enumerate(pessoas, start=1):
         if tipo == TipoServidor.ADMINISTRATIVO:
-            elementos.append(_folha_ponto(config, pessoa, dias, styles))
+            elementos.append(_folha_ponto(config, pessoa, dias, styles, numero_pagina))
             elementos.append(PageBreak())
             elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, styles)))
         else:
-            elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles))
+            elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles, numero_pagina))
         elementos.append(PageBreak())
 
     elementos += _termo(config, tipo, numero_folhas, encerramento=True, styles=styles)
@@ -829,7 +840,7 @@ def gerar_pdf(
     doc = SimpleDocTemplate(
         str(caminho_saida),
         pagesize=A4,
-        leftMargin=_MARGEM,
+        leftMargin=_MARGEM_ESQUERDA,
         rightMargin=_MARGEM,
         topMargin=_MARGEM,
         bottomMargin=_MARGEM,
