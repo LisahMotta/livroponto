@@ -119,7 +119,7 @@ def _styles():
     ss.add(ParagraphStyle("Campo", parent=ss["Normal"], fontSize=8, leading=11))
     # Nome do servidor um pouco maior que os demais campos (RG, cargo etc.)
     # — a pedido, pra ficar mais legível na folha impressa.
-    ss.add(ParagraphStyle("CampoNome", parent=ss["Campo"], fontSize=10, leading=13))
+    ss.add(ParagraphStyle("CampoNome", parent=ss["Campo"], fontSize=14, leading=13))
     ss.add(ParagraphStyle("CelTabela", parent=ss["Normal"], fontSize=8, alignment=1, leading=9))
     ss.add(ParagraphStyle("CelTabelaPequena", parent=ss["Normal"], fontSize=7.3, alignment=1, leading=8.3))
     ss.add(ParagraphStyle("ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold"))
