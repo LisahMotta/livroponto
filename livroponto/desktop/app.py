@@ -29,7 +29,7 @@ from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
 from .dialogs import DialogoExcecao, DialogoPessoa
 
-_ICONE = Path(__file__).resolve().parent.parent / "pdf" / "assets" / "brasao_sp.png"
+_ICONE = Path(__file__).resolve().parent / "assets" / "icone_livro.png"
 
 MESES_CAP = [nome_mes(i).capitalize() for i in range(1, 13)]
 

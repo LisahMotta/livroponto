@@ -30,7 +30,7 @@ livroponto = "livroponto.cli:main"
 include = ["livroponto*"]
 
 [tool.setuptools.package-data]
-livroponto = ["pdf/assets/*.png"]
+livroponto = ["pdf/assets/*.png", "desktop/assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
