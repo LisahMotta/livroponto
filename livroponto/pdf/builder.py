@@ -117,6 +117,9 @@ def _styles():
     )
     ss.add(ParagraphStyle("PagRotulo", parent=ss["Normal"], fontSize=9, alignment=2))
     ss.add(ParagraphStyle("Campo", parent=ss["Normal"], fontSize=8, leading=11))
+    # Nome do servidor um pouco maior que os demais campos (RG, cargo etc.)
+    # — a pedido, pra ficar mais legível na folha impressa.
+    ss.add(ParagraphStyle("CampoNome", parent=ss["Campo"], fontSize=10, leading=13))
     ss.add(ParagraphStyle("CelTabela", parent=ss["Normal"], fontSize=8, alignment=1, leading=9))
     ss.add(ParagraphStyle("CelTabelaPequena", parent=ss["Normal"], fontSize=7.3, alignment=1, leading=8.3))
     ss.add(ParagraphStyle("ConsolidacaoTitulo", parent=ss["Normal"], fontSize=12, fontName="Helvetica-Bold"))
@@ -261,9 +264,10 @@ def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
     """Bloco "SERVIDOR / CARGO / JORNADA / HORÁRIO / INTERVALO", nos mesmos
     rótulos e na mesma ordem do formulário original."""
     P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
+    P_nome = lambda t: Paragraph(t, styles["CampoNome"])  # noqa: E731
 
     linhas = [
-        [P(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", pessoa.rg))],
+        [P_nome(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", pessoa.rg))],
         [P(_linha_campo("CARGO/FUNÇÃO", pessoa.cargo)), ""],
     ]
     if pessoa.tipo in _TIPOS_FOLHA_PONTO:
@@ -544,8 +548,9 @@ def _bloco_dados_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Ta
     SUPLEMENTAR/CARGA HORÁRIA, DISCIPLINAS, SEDE DE CONTROLE DE FREQUÊNCIA —
     nos mesmos rótulos do formulário "Folha de Frequência" original."""
     P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
+    P_nome = lambda t: Paragraph(t, styles["CampoNome"])  # noqa: E731
     linhas = [
-        [P(_linha_campo("NOME", pessoa.nome)), P(_linha_campo("RG", pessoa.rg)), P("<b>FAIXA/NÍVEL:</b>")],
+        [P_nome(_linha_campo("NOME", pessoa.nome)), P(_linha_campo("RG", pessoa.rg)), P("<b>FAIXA/NÍVEL:</b>")],
         [
             P(_linha_campo("SITUAÇÃO", pessoa.cargo)),
             P(_linha_campo("CATEGORIA", pessoa.categoria)),
