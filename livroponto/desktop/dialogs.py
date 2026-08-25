@@ -7,7 +7,7 @@ from tkinter import messagebox
 
 import ttkbootstrap as ttk
 
-from ..models import DiaNaoLetivo, Pessoa, TipoServidor
+from ..models import TIPOS_LICENCA, DiaNaoLetivo, Licenca, Pessoa, TipoServidor
 
 TIPOS_PESSOA = ["ADMINISTRATIVO", "DOCENTE", "GESTAO"]
 TIPOS_EXCECAO = ["FERIADO", "RECESSO", "PONTO_FACULTATIVO", "SUSPENSAO", "LETIVO"]
@@ -113,15 +113,9 @@ class DialogoPessoa(_DialogoBase):
         ttk.Label(corpo, text="Intervalo até").grid(row=r, column=2, sticky="w", padx=(12, 8))
         ttk.Entry(corpo, textvariable=self.var_intervalo_fim, width=12).grid(row=r, column=3, sticky="w")
         r += 1
-        self.var_ferias_inicio = _linha(corpo, r, "Férias de", 12)
-        self.var_ferias_fim = tk.StringVar()
-        ttk.Label(corpo, text="Férias até").grid(row=r, column=2, sticky="w", padx=(12, 8))
-        ttk.Entry(corpo, textvariable=self.var_ferias_fim, width=12).grid(row=r, column=3, sticky="w")
-        r += 1
         ttk.Label(
             corpo,
-            text="(preenche o campo FÉRIAS da folha de ponto e sai anotado no verso: "
-            "\"Férias Regulares de ___ a ___\")",
+            text="(férias e licenças agora têm abas próprias — Férias / Licenças)",
             foreground="grey",
         ).grid(row=r, column=0, columnspan=4, sticky="w")
         r += 1
@@ -146,6 +140,14 @@ class DialogoPessoa(_DialogoBase):
         )
         ttk.Button(botoes, text="Salvar", command=self._salvar, bootstyle="success").pack(side="right")
 
+        # Férias e licenças têm abas próprias agora (não aparecem neste
+        # formulário) — mas continuam existindo na Pessoa, então precisam
+        # ser preservadas ao salvar uma edição, senão editar por aqui
+        # apagaria o que foi cadastrado nas outras abas.
+        self._ferias_inicio_orig = pessoa.ferias_inicio if pessoa is not None else ""
+        self._ferias_fim_orig = pessoa.ferias_fim if pessoa is not None else ""
+        self._licencas_orig = list(pessoa.licencas) if pessoa is not None else []
+
         if pessoa is not None:
             self._preencher(pessoa)
 
@@ -165,8 +167,6 @@ class DialogoPessoa(_DialogoBase):
         self.var_saida.set(p.saida)
         self.var_intervalo_inicio.set(p.intervalo_inicio)
         self.var_intervalo_fim.set(p.intervalo_fim)
-        self.var_ferias_inicio.set(p.ferias_inicio)
-        self.var_ferias_fim.set(p.ferias_fim)
         self.var_disciplinas.set(p.disciplinas)
         self.var_categoria.set(p.categoria)
         self.var_situacao.set(p.situacao)
@@ -201,12 +201,106 @@ class DialogoPessoa(_DialogoBase):
             saida=self.var_saida.get().strip(),
             intervalo_inicio=self.var_intervalo_inicio.get().strip(),
             intervalo_fim=self.var_intervalo_fim.get().strip(),
-            ferias_inicio=self.var_ferias_inicio.get().strip(),
-            ferias_fim=self.var_ferias_fim.get().strip(),
+            ferias_inicio=self._ferias_inicio_orig,
+            ferias_fim=self._ferias_fim_orig,
+            licencas=self._licencas_orig,
             disciplinas=self.var_disciplinas.get().strip(),
             categoria=self.var_categoria.get().strip(),
             situacao=self.var_situacao.get().strip(),
             observacoes=self.var_observacoes.get().strip(),
+        )
+        self.destroy()
+
+
+class DialogoFerias(_DialogoBase):
+    """Só o período de férias de um servidor já cadastrado — usado pela
+    aba Férias. `self.resultado` vira a tupla (ferias_inicio, ferias_fim)
+    se salvo (\"\", \"\" se limpo), None se cancelado."""
+
+    def __init__(self, parent: tk.Widget, pessoa: Pessoa):
+        super().__init__(parent, f"Férias de {pessoa.nome}")
+
+        corpo = ttk.Frame(self, padding=12)
+        corpo.pack(fill="both", expand=True)
+
+        ttk.Label(corpo, text=pessoa.nome, font=("", 11, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8)
+        )
+        self.var_ferias_inicio = _linha(corpo, 1, "Férias de", 14)
+        self.var_ferias_fim = _linha(corpo, 2, "Férias até", 14)
+        self.var_ferias_inicio.set(pessoa.ferias_inicio)
+        self.var_ferias_fim.set(pessoa.ferias_fim)
+
+        botoes = ttk.Frame(corpo)
+        botoes.grid(row=3, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        ttk.Button(botoes, text="Limpar", command=self._limpar, bootstyle="secondary-outline").pack(side="left")
+        ttk.Button(botoes, text="Cancelar", command=self._cancelar, bootstyle="secondary-outline").pack(
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(botoes, text="Salvar", command=self._salvar, bootstyle="success").pack(side="right")
+
+        self.bind("<Return>", lambda _e: self._salvar())
+        self.bind("<Escape>", lambda _e: self._cancelar())
+        self._finalizar(parent)
+
+    def _limpar(self) -> None:
+        self.var_ferias_inicio.set("")
+        self.var_ferias_fim.set("")
+
+    def _cancelar(self) -> None:
+        self.resultado = None
+        self.destroy()
+
+    def _salvar(self) -> None:
+        self.resultado = (self.var_ferias_inicio.get().strip(), self.var_ferias_fim.get().strip())
+        self.destroy()
+
+
+class DialogoLicenca(_DialogoBase):
+    """Adiciona ou edita um período de licença (saúde/prêmio) de um
+    servidor já cadastrado — usado pela aba Licenças. `self.resultado`
+    vira a Licenca preenchida se salvo, None se cancelado."""
+
+    def __init__(self, parent: tk.Widget, pessoa: Pessoa, licenca: Licenca | None = None):
+        super().__init__(parent, "Editar licença" if licenca else "Adicionar licença")
+
+        corpo = ttk.Frame(self, padding=12)
+        corpo.pack(fill="both", expand=True)
+
+        ttk.Label(corpo, text=pessoa.nome, font=("", 11, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8)
+        )
+
+        ttk.Label(corpo, text="Tipo").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=3)
+        self.var_tipo = tk.StringVar(value=licenca.tipo if licenca is not None else TIPOS_LICENCA[0])
+        ttk.Combobox(
+            corpo, textvariable=self.var_tipo, values=TIPOS_LICENCA, state="readonly", width=14
+        ).grid(row=1, column=1, sticky="w", pady=3)
+
+        self.var_inicio = _linha(corpo, 2, "De", 14)
+        self.var_fim = _linha(corpo, 3, "Até", 14)
+        if licenca is not None:
+            self.var_inicio.set(licenca.inicio)
+            self.var_fim.set(licenca.fim)
+
+        botoes = ttk.Frame(corpo)
+        botoes.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        ttk.Button(botoes, text="Cancelar", command=self._cancelar, bootstyle="secondary-outline").pack(
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(botoes, text="Salvar", command=self._salvar, bootstyle="success").pack(side="right")
+
+        self.bind("<Return>", lambda _e: self._salvar())
+        self.bind("<Escape>", lambda _e: self._cancelar())
+        self._finalizar(parent)
+
+    def _cancelar(self) -> None:
+        self.resultado = None
+        self.destroy()
+
+    def _salvar(self) -> None:
+        self.resultado = Licenca(
+            tipo=self.var_tipo.get(), inicio=self.var_inicio.get().strip(), fim=self.var_fim.get().strip()
         )
         self.destroy()
 

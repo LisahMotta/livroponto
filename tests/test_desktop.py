@@ -48,6 +48,8 @@ def test_janela_abre_com_abas(app):
     assert app.tree_administrativo is not None
     assert app.tree_gestao is not None
     assert app.tree_excecoes is not None
+    assert app.tree_ferias is not None
+    assert app.tree_licencas is not None
 
 
 def test_adicionar_e_remover_pessoa_atualiza_lista(app):
@@ -340,18 +342,41 @@ def test_dialogo_pessoa_edicao_preenche_campos_existentes(app, monkeypatch):
     assert dlg.resultado is None
 
 
-def test_dialogo_pessoa_periodo_de_ferias_vai_pro_resultado(app, monkeypatch):
+def test_dialogo_pessoa_nao_tem_mais_campo_de_ferias(app, monkeypatch):
+    """Férias saiu do diálogo de Adicionar/Editar servidor — agora só se
+    edita pela aba Férias."""
     monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
 
     dlg = DialogoPessoa(app)
-    dlg.var_nome.set("Servidor Com Férias")
-    dlg.var_ferias_inicio.set("03/04/2026")
-    dlg.var_ferias_fim.set("02/05/2026")
+    assert not hasattr(dlg, "var_ferias_inicio")
+    assert not hasattr(dlg, "var_ferias_fim")
+    dlg._cancelar()
+
+
+def test_dialogo_pessoa_editar_preserva_ferias_e_licencas_existentes(app, monkeypatch):
+    """Editar um servidor pelo diálogo (sem os campos de férias/licenças,
+    que agora moraram noutras abas) não pode apagar o que já estava
+    cadastrado lá."""
+    from livroponto.models import Licenca
+
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    pessoa = _pessoa_exemplo(
+        nome="Servidor Com Férias",
+        ferias_inicio="03/04/2026",
+        ferias_fim="02/05/2026",
+        licencas=[Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026")],
+    )
+    dlg = DialogoPessoa(app, pessoa)
+    dlg.var_cargo.set("Novo Cargo")  # muda outra coisa qualquer
     dlg._salvar()
 
     assert dlg.resultado.ferias_inicio == "03/04/2026"
     assert dlg.resultado.ferias_fim == "02/05/2026"
     assert dlg.resultado.periodo_ferias == "03/04/2026 a 02/05/2026"
+    assert len(dlg.resultado.licencas) == 1
+    assert dlg.resultado.licencas[0].tipo == "SAUDE"
+    assert dlg.resultado.cargo == "Novo Cargo"
 
 
 def test_dialogo_pessoa_tipo_gestao_com_jornada_e_horario(app, monkeypatch):
@@ -480,3 +505,86 @@ def test_gerar_termos_pelo_botao_gera_pdf_de_verdade(app, tmp_path, monkeypatch)
 
     assert caminho.exists()
     assert caminho.stat().st_size > 500
+
+
+def test_aba_ferias_lista_todo_mundo_e_editar_atualiza_pessoa(app):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Servidor Sem Férias", rg="5"))
+    app._atualizar_lista_ferias()
+    assert len(app.tree_ferias.get_children()) == 1
+
+    app.tree_ferias.selection_set("0")
+    idx = app._pessoa_selecionada_ferias()
+    assert idx == 0
+
+    app.dados.pessoas[idx].ferias_inicio = "03/04/2026"
+    app.dados.pessoas[idx].ferias_fim = "02/05/2026"
+    app._atualizar_lista_ferias()
+    valores = app.tree_ferias.item("0", "values")
+    assert valores[3] == "03/04/2026"
+    assert valores[4] == "02/05/2026"
+
+
+def test_dialogo_ferias_edita_e_limpa_periodo(app, monkeypatch):
+    from livroponto.desktop.dialogs import DialogoFerias
+
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    pessoa = _pessoa_exemplo(nome="Fulano", ferias_inicio="03/04/2026", ferias_fim="02/05/2026")
+    dlg = DialogoFerias(app, pessoa)
+    assert dlg.var_ferias_inicio.get() == "03/04/2026"
+    assert dlg.var_ferias_fim.get() == "02/05/2026"
+
+    dlg._limpar()
+    dlg._salvar()
+    assert dlg.resultado == ("", "")
+
+
+def test_licenca_adicionar_editar_remover_atualiza_lista_e_observacoes(app, monkeypatch):
+    from livroponto.desktop.dialogs import DialogoLicenca
+
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Servidor Licença", rg="9"))
+    app._atualizar_lista_licencas()
+    app._atualizar_listas_pessoas()
+
+    app.combo_licenca_servidor.current(0)
+    dlg = DialogoLicenca(app, app.dados.pessoas[0])
+    dlg.var_tipo.set("SAUDE")
+    dlg.var_inicio.set("10/04/2026")
+    dlg.var_fim.set("20/04/2026")
+    dlg._salvar()
+    assert dlg.resultado is not None
+    app.dados.pessoas[0].licencas.append(dlg.resultado)
+    app._atualizar_lista_licencas()
+    app._atualizar_listas_pessoas()
+
+    assert len(app.tree_licencas.get_children()) == 1
+    linha = app.tree_licencas.item("0:0", "values")
+    assert linha[0] == "Servidor Licença"
+    assert linha[1] == "Licença Saúde"
+
+    # a licença aparece resumida na coluna Observações do cadastro
+    valores_admin = app.tree_administrativo.item("0", "values")
+    assert "Licença Saúde: 10/04/2026 a 20/04/2026" in valores_admin[-1]
+
+    # remover
+    app.tree_licencas.selection_set("0:0")
+    sel = app._licenca_selecionada()
+    assert sel == (0, 0)
+    del app.dados.pessoas[0].licencas[0]
+    app._atualizar_lista_licencas()
+    assert len(app.tree_licencas.get_children()) == 0
+
+
+def test_observacoes_exibicao_mescla_texto_livre_e_licencas():
+    from livroponto.desktop.app import _observacoes_exibicao
+    from livroponto.models import Licenca
+
+    pessoa = _pessoa_exemplo(
+        observacoes="Afastada por licença médica",
+        licencas=[Licenca(tipo="PREMIO", inicio="01/06/2026", fim="30/06/2026")],
+    )
+    texto = _observacoes_exibicao(pessoa)
+    assert "Afastada por licença médica" in texto
+    assert "Licença Prêmio: 01/06/2026 a 30/06/2026" in texto

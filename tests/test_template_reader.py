@@ -1,6 +1,6 @@
 from openpyxl import load_workbook
 
-from livroponto.models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
+from livroponto.models import DiaNaoLetivo, Escola, Licenca, LivroPontoConfig, Pessoa, TipoServidor
 from livroponto.readers.template_reader import criar_modelo, ler_modelo, salvar_modelo
 
 
@@ -129,3 +129,36 @@ def test_salvar_modelo_e_ler_modelo_preservam_periodo_de_ferias(tmp_path):
     assert recarregado.pessoas[0].ferias_inicio == "03/04/2026"
     assert recarregado.pessoas[0].ferias_fim == "02/05/2026"
     assert recarregado.pessoas[0].periodo_ferias == "03/04/2026 a 02/05/2026"
+
+
+def test_salvar_modelo_e_ler_modelo_preservam_licencas(tmp_path):
+    config = LivroPontoConfig(
+        escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
+        mes=4,
+        ano=2026,
+        pessoas=[
+            Pessoa(
+                nome="Servidor Fictício",
+                tipo=TipoServidor.ADMINISTRATIVO,
+                rg="1.111.111-1",
+                licencas=[
+                    Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026"),
+                    Licenca(tipo="PREMIO", inicio="01/06/2026", fim="30/06/2026"),
+                ],
+            ),
+            Pessoa(nome="Sem Licença", tipo=TipoServidor.ADMINISTRATIVO, rg="2.222.222-2"),
+        ],
+    )
+
+    caminho = tmp_path / "modelo.xlsx"
+    salvar_modelo(config, caminho)
+    recarregado = ler_modelo(caminho)
+
+    com_licenca = next(p for p in recarregado.pessoas if p.nome == "Servidor Fictício")
+    sem_licenca = next(p for p in recarregado.pessoas if p.nome == "Sem Licença")
+    assert len(com_licenca.licencas) == 2
+    assert {(lic.tipo, lic.periodo) for lic in com_licenca.licencas} == {
+        ("SAUDE", "10/04/2026 a 20/04/2026"),
+        ("PREMIO", "01/06/2026 a 30/06/2026"),
+    }
+    assert sem_licenca.licencas == []

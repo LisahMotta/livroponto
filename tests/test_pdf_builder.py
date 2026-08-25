@@ -1,7 +1,7 @@
 from reportlab.platypus import Paragraph
 
 from livroponto.calendario import montar_calendario
-from livroponto.models import Escola, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
+from livroponto.models import Escola, Licenca, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
 from livroponto.pdf.builder import _bloco_tipo, _folha_consolidacao, _secao_financeira, _styles, _termo, gerar_pdf
 
 
@@ -211,6 +211,36 @@ def test_pessoa_periodo_ferias():
     assert com_ferias.periodo_ferias == "03/04/2026 a 02/05/2026"
 
 
+def test_licencas_em_vigor_considera_sobreposicao_de_periodo():
+    from livroponto.models import licencas_em_vigor
+
+    pessoa = Pessoa(
+        nome="Fulano",
+        tipo=TipoServidor.ADMINISTRATIVO,
+        licencas=[
+            Licenca(tipo="SAUDE", inicio="15/03/2026", fim="10/04/2026"),  # começa antes, termina dentro do mês
+            Licenca(tipo="PREMIO", inicio="25/04/2026", fim="10/05/2026"),  # começa dentro, termina depois
+            Licenca(tipo="SAUDE", inicio="01/01/2026", fim="28/02/2026"),  # totalmente antes do mês
+            Licenca(tipo="SAUDE", inicio="", fim=""),  # sem data — ignorada, não quebra nada
+        ],
+    )
+    vigentes = licencas_em_vigor(pessoa, mes=4, ano=2026)
+    assert {(v.tipo, v.inicio, v.fim) for v in vigentes} == {
+        ("SAUDE", "15/03/2026", "10/04/2026"),
+        ("PREMIO", "25/04/2026", "10/05/2026"),
+    }
+
+
+def test_licenca_rotulo_e_periodo():
+    saude = Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026")
+    assert saude.rotulo == "Licença Saúde"
+    assert saude.periodo == "10/04/2026 a 20/04/2026"
+
+    premio = Licenca(tipo="PREMIO")
+    assert premio.rotulo == "Licença Prêmio"
+    assert premio.periodo == ""
+
+
 def test_secao_financeira_preenche_ferias_cadastradas():
     pessoa = Pessoa(
         nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
@@ -275,6 +305,41 @@ def test_folha_consolidacao_sem_feriados_no_mes_nao_anota_nada():
     elementos = _folha_consolidacao(config, pessoa, dias, _styles())
     textos = _textos(elementos)
     assert not any("Feriados e exceções do mês" in t for t in textos)
+
+
+def test_folha_consolidacao_anota_licenca_em_vigor_no_mes():
+    """Pedido do usuário: uma licença (saúde ou prêmio) só sai anotada na
+    consolidação se ainda estiver em vigor no mês do livro sendo gerado —
+    uma já encerrada em outro mês não deve aparecer."""
+    config = _config_exemplo()
+    config.mes = 4
+    config.ano = 2026
+    pessoa = Pessoa(
+        nome="Fulano",
+        tipo=TipoServidor.ADMINISTRATIVO,
+        licencas=[
+            Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026"),
+            Licenca(tipo="PREMIO", inicio="01/01/2025", fim="31/03/2025"),
+        ],
+    )
+    elementos = _folha_consolidacao(config, pessoa, [], _styles())
+    textos = _textos(elementos)
+    assert any("Licença Saúde" in t and "10/04/2026 a 20/04/2026" in t for t in textos)
+    assert not any("Licença Prêmio" in t for t in textos)
+
+
+def test_folha_consolidacao_sem_licenca_em_vigor_nao_anota_nada():
+    config = _config_exemplo()
+    config.mes = 6
+    config.ano = 2026
+    pessoa = Pessoa(
+        nome="Fulano",
+        tipo=TipoServidor.ADMINISTRATIVO,
+        licencas=[Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026")],
+    )
+    elementos = _folha_consolidacao(config, pessoa, [], _styles())
+    textos = _textos(elementos)
+    assert not any("Licença" in t for t in textos)
 
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():

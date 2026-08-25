@@ -33,7 +33,7 @@ from reportlab.platypus import (
 )
 
 from ..calendario import montar_calendario, nome_mes
-from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
+from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg, licencas_em_vigor
 
 # Qualificação do tipo de servidor, do jeito que sai no formulário oficial
 # (fotografado pelo usuário): "registro do Ponto do Pessoal Administrativo
@@ -499,10 +499,11 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
 def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> list:
     """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
     CONSOLIDAÇÃO, as anotações automáticas já impressas (feriados e
-    exceções do mês, férias regulares cadastradas e observações — ex.:
-    afastamentos), e o espaço pautado restante para anotações
-    manuscritas, com o fecho de data e assinatura do superior imediato —
-    igual ao formulário original."""
+    exceções do mês, férias regulares cadastradas, licenças em vigor
+    nesse mês — saúde/prêmio — e observações — ex.: afastamentos), e o
+    espaço pautado restante para anotações manuscritas, com o fecho de
+    data e assinatura do superior imediato — igual ao formulário
+    original."""
     elementos = [_cabecalho_formulario(config, styles, numero_pagina=None)]
     elementos.append(Spacer(1, 0.3 * cm))
     elementos.append(Paragraph("CONSOLIDAÇÃO", styles["ConsolidacaoTitulo"]))
@@ -516,6 +517,8 @@ def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) 
         )
     if pessoa.periodo_ferias:
         anotacoes.append(Paragraph(f"<b>Férias Regulares</b> de {pessoa.periodo_ferias}", styles["Campo"]))
+    for licenca in licencas_em_vigor(pessoa, config.mes, config.ano):
+        anotacoes.append(Paragraph(f"<b>{licenca.rotulo}</b> de {licenca.periodo}", styles["Campo"]))
     if pessoa.observacoes:
         anotacoes.append(Paragraph(f"<b>OBSERVAÇÕES:</b> {_truncar(pessoa.observacoes, 400)}", styles["Campo"]))
 

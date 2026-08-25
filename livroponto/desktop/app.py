@@ -26,7 +26,7 @@ from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg
 from ..pdf.builder import gerar_pdf, gerar_termos_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
-from .dialogs import DialogoExcecao, DialogoPessoa
+from .dialogs import DialogoExcecao, DialogoFerias, DialogoLicenca, DialogoPessoa
 
 _ICONE = Path(__file__).resolve().parent / "assets" / "icone_livro.png"
 
@@ -44,6 +44,20 @@ _SUFIXO_ARQUIVO_TIPO = [
 def _config_vazio() -> LivroPontoConfig:
     hoje = date.today()
     return LivroPontoConfig(escola=Escola(), mes=hoje.month, ano=hoje.year, pessoas=[])
+
+
+def _observacoes_exibicao(pessoa) -> str:
+    """Texto mostrado na coluna Observações do cadastro: junta a
+    observação livre com um resumo das licenças lançadas na aba Licenças
+    (independente de estarem em vigor agora — isso só importa na hora de
+    imprimir a consolidação)."""
+    partes = []
+    if pessoa.observacoes:
+        partes.append(pessoa.observacoes)
+    for licenca in pessoa.licencas:
+        if licenca.periodo:
+            partes.append(f"{licenca.rotulo}: {licenca.periodo}")
+    return " | ".join(partes)
 
 
 def _abrir_no_sistema(caminho: str) -> None:
@@ -69,6 +83,7 @@ class Aplicativo(ttk.Window):
 
         self.dados: LivroPontoConfig = _config_vazio()
         self.caminho_atual: str | None = None
+        self._indices_combo_licenca: list[int] = []
 
         self._construir_barra_ferramentas()
         self._construir_abas()
@@ -118,17 +133,23 @@ class Aplicativo(ttk.Window):
         aba_administrativo = ttk.Frame(notebook)
         aba_gestao = ttk.Frame(notebook)
         aba_excecoes = ttk.Frame(notebook)
+        aba_ferias = ttk.Frame(notebook, padding=12)
+        aba_licencas = ttk.Frame(notebook, padding=12)
         aba_termos = ttk.Frame(notebook, padding=12)
         notebook.add(aba_escola, text="Escola")
         notebook.add(aba_administrativo, text="Administrativo")
         notebook.add(aba_gestao, text="Gestão")
         notebook.add(aba_excecoes, text="Feriados e exceções")
+        notebook.add(aba_ferias, text="Férias")
+        notebook.add(aba_licencas, text="Licenças")
         notebook.add(aba_termos, text="Termos")
 
         self._construir_aba_escola(aba_escola)
         self.tree_administrativo = self._construir_aba_pessoas_tipo(aba_administrativo, TipoServidor.ADMINISTRATIVO)
         self.tree_gestao = self._construir_aba_pessoas_tipo(aba_gestao, TipoServidor.GESTAO)
         self._construir_aba_excecoes(aba_excecoes)
+        self._construir_aba_ferias(aba_ferias)
+        self._construir_aba_licencas(aba_licencas)
         self._construir_aba_termos(aba_termos)
 
     def _construir_aba_escola(self, aba: ttk.Frame) -> None:
@@ -259,6 +280,98 @@ class Aplicativo(ttk.Window):
         scroll.pack(side="right", fill="y")
         self.tree_excecoes.bind("<Double-1>", lambda _e: self._editar_excecao_selecionada())
 
+    def _construir_aba_ferias(self, aba: ttk.Frame) -> None:
+        """Período de férias de cada servidor, numa aba própria — não
+        aparece mais no diálogo de Adicionar/Editar servidor. Preenche o
+        campo FÉRIAS do rodapé da folha de ponto e a anotação "Férias
+        Regulares" no verso."""
+        aviso = (
+            "Selecione um servidor e clique em Editar (ou dê duplo-clique) para "
+            "preencher o período de férias — puxa direto para o campo FÉRIAS da "
+            "folha de ponto e para a anotação no verso."
+        )
+        ttk.Label(aba, text=aviso, wraplength=920, foreground="grey").pack(fill="x", pady=(0, 8))
+
+        barra = ttk.Frame(aba)
+        barra.pack(fill="x", pady=(0, 4))
+        ttk.Button(
+            barra, text="Editar período de férias", command=self._editar_ferias_selecionada, bootstyle="primary"
+        ).pack(side="left")
+        ttk.Label(barra, text="  (duplo-clique numa linha também edita)", foreground="grey").pack(side="left")
+
+        colunas = ("nome", "tipo", "rg", "ferias_inicio", "ferias_fim")
+        titulos = {
+            "nome": "Nome",
+            "tipo": "Tipo",
+            "rg": "RG",
+            "ferias_inicio": "Férias de",
+            "ferias_fim": "Férias até",
+        }
+        larguras = {"nome": 280, "tipo": 130, "rg": 110, "ferias_inicio": 110, "ferias_fim": 110}
+
+        container = ttk.Frame(aba)
+        container.pack(fill="both", expand=True, pady=(4, 0))
+        self.tree_ferias = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
+        for c in colunas:
+            self.tree_ferias.heading(c, text=titulos[c])
+            self.tree_ferias.column(c, width=larguras[c], anchor="w")
+        scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_ferias.yview)
+        self.tree_ferias.configure(yscrollcommand=scroll.set)
+        self.tree_ferias.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.tree_ferias.bind("<Double-1>", lambda _e: self._editar_ferias_selecionada())
+
+    def _construir_aba_licencas(self, aba: ttk.Frame) -> None:
+        """Períodos de licença saúde/prêmio de cada servidor — um servidor
+        pode ter vários ao longo do tempo. Aparecem no campo Observações
+        do cadastro; só entram na folha de consolidação se ainda
+        estiverem em vigor no mês do livro sendo gerado."""
+        aviso = (
+            "Escolha um servidor e clique em \"Adicionar licença\" para lançar um período "
+            "de licença saúde ou prêmio. Aparece no campo Observações do cadastro; só sai "
+            "impresso na folha de consolidação se ainda estiver em vigor no mês do livro "
+            "sendo gerado."
+        )
+        ttk.Label(aba, text=aviso, wraplength=920, foreground="grey").pack(fill="x", pady=(0, 8))
+
+        linha_servidor = ttk.Frame(aba)
+        linha_servidor.pack(fill="x", pady=(0, 8))
+        ttk.Label(linha_servidor, text="Servidor:").pack(side="left", padx=(0, 8))
+        self.var_licenca_servidor = tk.StringVar()
+        self.combo_licenca_servidor = ttk.Combobox(
+            linha_servidor, textvariable=self.var_licenca_servidor, state="readonly", width=50
+        )
+        self.combo_licenca_servidor.pack(side="left", padx=(0, 8))
+        ttk.Button(
+            linha_servidor, text="Adicionar licença", command=self._adicionar_licenca, bootstyle="primary"
+        ).pack(side="left")
+
+        barra = ttk.Frame(aba)
+        barra.pack(fill="x", pady=(0, 4))
+        ttk.Button(
+            barra, text="Editar", command=self._editar_licenca_selecionada, bootstyle="info-outline"
+        ).pack(side="left")
+        ttk.Button(
+            barra, text="Remover", command=self._remover_licenca_selecionada, bootstyle="danger-outline"
+        ).pack(side="left", padx=6)
+        ttk.Label(barra, text="  (duplo-clique numa linha também edita)", foreground="grey").pack(side="left")
+
+        colunas = ("nome", "tipo", "inicio", "fim")
+        titulos = {"nome": "Nome", "tipo": "Tipo", "inicio": "De", "fim": "Até"}
+        larguras = {"nome": 280, "tipo": 150, "inicio": 110, "fim": 110}
+
+        container = ttk.Frame(aba)
+        container.pack(fill="both", expand=True, pady=(4, 0))
+        self.tree_licencas = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
+        for c in colunas:
+            self.tree_licencas.heading(c, text=titulos[c])
+            self.tree_licencas.column(c, width=larguras[c], anchor="w")
+        scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_licencas.yview)
+        self.tree_licencas.configure(yscrollcommand=scroll.set)
+        self.tree_licencas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.tree_licencas.bind("<Double-1>", lambda _e: self._editar_licenca_selecionada())
+
     def _construir_aba_termos(self, aba: ttk.Frame) -> None:
         """Aba pra imprimir só os termos de abertura e encerramento (sem
         as folhas de ponto de cada servidor) — útil pra reimprimir/trocar
@@ -351,6 +464,8 @@ class Aplicativo(ttk.Window):
         self._atualizar_campos_escola()
         self._atualizar_listas_pessoas()
         self._atualizar_lista_excecoes()
+        self._atualizar_lista_ferias()
+        self._atualizar_lista_licencas()
 
     def _status(self, texto: str) -> None:
         self.var_status.set(texto)
@@ -529,7 +644,7 @@ class Aplicativo(ttk.Window):
                 "",
                 "end",
                 iid=str(i),
-                values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não", p.observacoes),
+                values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não", _observacoes_exibicao(p)),
             )
 
     def _atualizar_listas_pessoas(self) -> None:
@@ -612,6 +727,107 @@ class Aplicativo(ttk.Window):
             del self.dados.dias_excecao[idx]
             self._atualizar_lista_excecoes()
             self._status("Exceção removida.")
+
+    # ------------------------------------------------------------------
+    # Aba Férias
+    # ------------------------------------------------------------------
+    def _atualizar_lista_ferias(self) -> None:
+        tree = self.tree_ferias
+        tree.delete(*tree.get_children())
+        itens = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
+        for i, p in itens:
+            tree.insert(
+                "", "end", iid=str(i), values=(p.nome, p.tipo.value, p.rg, p.ferias_inicio, p.ferias_fim)
+            )
+
+    def _pessoa_selecionada_ferias(self) -> int | None:
+        sel = self.tree_ferias.selection()
+        return int(sel[0]) if sel else None
+
+    def _editar_ferias_selecionada(self) -> None:
+        idx = self._pessoa_selecionada_ferias()
+        if idx is None:
+            messagebox.showinfo("Selecione um servidor", "Clique numa linha da tabela primeiro.", parent=self)
+            return
+        dlg = DialogoFerias(self, self.dados.pessoas[idx])
+        if dlg.resultado is not None:
+            ferias_inicio, ferias_fim = dlg.resultado
+            self.dados.pessoas[idx].ferias_inicio = ferias_inicio
+            self.dados.pessoas[idx].ferias_fim = ferias_fim
+            self._atualizar_lista_ferias()
+            self._status("Período de férias atualizado.")
+
+    # ------------------------------------------------------------------
+    # Aba Licenças
+    # ------------------------------------------------------------------
+    def _atualizar_lista_licencas(self) -> None:
+        pessoas_ordenadas = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
+        self.combo_licenca_servidor.configure(
+            values=[f"{p.nome} — {p.rg}" if p.rg else p.nome for _, p in pessoas_ordenadas]
+        )
+        self._indices_combo_licenca = [i for i, _ in pessoas_ordenadas]
+        if self._indices_combo_licenca and self.combo_licenca_servidor.current() == -1:
+            self.combo_licenca_servidor.current(0)
+
+        tree = self.tree_licencas
+        tree.delete(*tree.get_children())
+        for i, p in pessoas_ordenadas:
+            for j, lic in enumerate(p.licencas):
+                tree.insert("", "end", iid=f"{i}:{j}", values=(p.nome, lic.rotulo, lic.inicio, lic.fim))
+
+    def _pessoa_selecionada_no_combo_licenca(self) -> int | None:
+        pos = self.combo_licenca_servidor.current()
+        if pos < 0 or pos >= len(self._indices_combo_licenca):
+            return None
+        return self._indices_combo_licenca[pos]
+
+    def _licenca_selecionada(self) -> tuple[int, int] | None:
+        sel = self.tree_licencas.selection()
+        if not sel:
+            return None
+        pessoa_idx, lic_idx = sel[0].split(":")
+        return int(pessoa_idx), int(lic_idx)
+
+    def _adicionar_licenca(self) -> None:
+        idx = self._pessoa_selecionada_no_combo_licenca()
+        if idx is None:
+            messagebox.showinfo(
+                "Selecione um servidor", "Escolha um servidor na lista antes de adicionar.", parent=self
+            )
+            return
+        dlg = DialogoLicenca(self, self.dados.pessoas[idx])
+        if dlg.resultado is not None:
+            self.dados.pessoas[idx].licencas.append(dlg.resultado)
+            self._atualizar_lista_licencas()
+            self._atualizar_listas_pessoas()
+            self._status("Licença adicionada.")
+
+    def _editar_licenca_selecionada(self) -> None:
+        sel = self._licenca_selecionada()
+        if sel is None:
+            messagebox.showinfo("Selecione uma licença", "Clique numa linha da tabela primeiro.", parent=self)
+            return
+        pessoa_idx, lic_idx = sel
+        pessoa = self.dados.pessoas[pessoa_idx]
+        dlg = DialogoLicenca(self, pessoa, pessoa.licencas[lic_idx])
+        if dlg.resultado is not None:
+            pessoa.licencas[lic_idx] = dlg.resultado
+            self._atualizar_lista_licencas()
+            self._atualizar_listas_pessoas()
+            self._status("Licença atualizada.")
+
+    def _remover_licenca_selecionada(self) -> None:
+        sel = self._licenca_selecionada()
+        if sel is None:
+            messagebox.showinfo("Selecione uma licença", "Clique numa linha da tabela primeiro.", parent=self)
+            return
+        pessoa_idx, lic_idx = sel
+        pessoa = self.dados.pessoas[pessoa_idx]
+        if messagebox.askyesno("Remover licença", f"Remover essa licença de {pessoa.nome}?", parent=self):
+            del pessoa.licencas[lic_idx]
+            self._atualizar_lista_licencas()
+            self._atualizar_listas_pessoas()
+            self._status("Licença removida.")
 
 
 def main() -> None:

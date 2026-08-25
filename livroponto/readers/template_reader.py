@@ -1,17 +1,18 @@
 """Leitor/gerador do modelo simplificado (.xlsx) — alternativa para quem não
 tem a planilha legada SEDUC-SP: uma aba "Escola" (campo/valor), uma aba
 "Pessoas" (uma linha por servidor — administrativo, docente ou do trio
-gestor, todos na mesma aba, diferenciados pela coluna "tipo") e uma aba
-"Excecoes" (recesso, ponto facultativo etc.). É o mesmo formato usado para
-persistir o que é editado no app web (`livroponto app`) — editar lá e
-"Salvar" grava nesse formato."""
+gestor, todos na mesma aba, diferenciados pela coluna "tipo"), uma aba
+"Excecoes" (recesso, ponto facultativo etc.) e uma aba "Licencas" (períodos
+de licença saúde/prêmio, uma linha por período, casados de volta com a
+pessoa por nome+RG). É o mesmo formato usado para persistir o que é editado
+no app web (`livroponto app`) — editar lá e "Salvar" grava nesse formato."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from ..models import DiaNaoLetivo, Escola, LivroPontoConfig, Pessoa, TipoServidor
+from ..models import DiaNaoLetivo, Escola, Licenca, LivroPontoConfig, Pessoa, TipoServidor
 
 COLUNAS_PESSOAS = [
     "tipo",
@@ -34,6 +35,11 @@ COLUNAS_PESSOAS = [
 ]
 
 COLUNAS_EXCECOES = ["mes", "dia", "tipo", "descricao"]
+
+# Licenças (saúde/prêmio) ficam numa aba à parte, uma linha por período —
+# um servidor pode acumular vários ao longo do tempo. Casadas de volta com
+# a pessoa por nome+RG na leitura (não há um ID estável entre as abas).
+COLUNAS_LICENCAS = ["nome", "rg", "tipo", "inicio", "fim"]
 
 CAMPOS_ESCOLA = [
     ("nome", "Nome da escola"),
@@ -150,6 +156,12 @@ def salvar_modelo(config: LivroPontoConfig, caminho: str | Path) -> None:
     for e in config.dias_excecao:
         aba_excecoes.append([e.mes, e.dia, e.tipo, e.descricao])
 
+    aba_licencas = wb.create_sheet("Licencas")
+    aba_licencas.append(COLUNAS_LICENCAS)
+    for p in config.pessoas:
+        for lic in p.licencas:
+            aba_licencas.append([p.nome, p.rg, lic.tipo, lic.inicio, lic.fim])
+
     Path(caminho).parent.mkdir(parents=True, exist_ok=True)
     wb.save(caminho)
 
@@ -262,6 +274,25 @@ def ler_modelo(caminho: str | Path) -> LivroPontoConfig:
                     dia=int(dia_e),
                     tipo=str(campo(row, idx_exc, "tipo", "")).strip().upper(),
                     descricao=str(campo(row, idx_exc, "descricao", "")),
+                )
+            )
+
+    if "Licencas" in wb.sheetnames:
+        pessoas_por_chave = {(p.nome, p.rg): p for p in pessoas}
+        idx_lic, linhas_lic = _ler_tabela("Licencas")
+        for row in linhas_lic:
+            if not row or all(v in (None, "") for v in row):
+                continue
+            nome_lic = str(campo(row, idx_lic, "nome", "")).strip()
+            rg_lic = str(campo(row, idx_lic, "rg", "")).strip()
+            pessoa = pessoas_por_chave.get((nome_lic, rg_lic))
+            if pessoa is None:
+                continue  # servidor não encontrado (removido do cadastro depois) — pula
+            pessoa.licencas.append(
+                Licenca(
+                    tipo=str(campo(row, idx_lic, "tipo", "")).strip().upper(),
+                    inicio=str(campo(row, idx_lic, "inicio", "")),
+                    fim=str(campo(row, idx_lic, "fim", "")),
                 )
             )
 

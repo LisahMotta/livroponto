@@ -1,8 +1,10 @@
 """Estruturas de dados usadas pelo gerador de Livro Ponto."""
 from __future__ import annotations
 
+import calendar
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Optional
 
@@ -24,6 +26,33 @@ class Escola:
     email: str = ""
     codigo_ua: str = ""
     codigo_cie: str = ""
+
+
+TIPOS_LICENCA = ["SAUDE", "PREMIO"]
+ROTULO_LICENCA = {"SAUDE": "Licença Saúde", "PREMIO": "Licença Prêmio"}
+
+
+@dataclass
+class Licenca:
+    """Um período de licença (saúde ou prêmio) de um servidor — cadastrado
+    na aba Licenças, não no diálogo de Adicionar/Editar servidor. Um
+    servidor pode acumular vários períodos ao longo do tempo; cada um só
+    vira anotação na folha de consolidação do(s) mês(es) em que estiver
+    de fato em vigor (ver `licencas_em_vigor`)."""
+
+    tipo: str  # SAUDE | PREMIO
+    inicio: str = ""  # ex.: "03/04/2026" — data livre, sem formato fixo
+    fim: str = ""
+
+    @property
+    def periodo(self) -> str:
+        if self.inicio and self.fim:
+            return f"{self.inicio} a {self.fim}"
+        return ""
+
+    @property
+    def rotulo(self) -> str:
+        return ROTULO_LICENCA.get(self.tipo, self.tipo)
 
 
 @dataclass
@@ -48,8 +77,9 @@ class Pessoa:
     situacao: str = ""
     jornada_codigo: str = ""  # p.ex. R/I/B/C (Reduzida/Inicial/Básica/Integral) — só docentes
     observacoes: str = ""
-    ferias_inicio: str = ""  # ex.: "03/04/2026" — data livre, sem formato fixo
+    ferias_inicio: str = ""  # ex.: "03/04/2026" — data livre, sem formato fixo — aba Férias
     ferias_fim: str = ""
+    licencas: list[Licenca] = field(default_factory=list)  # aba Licenças
     seq: Optional[int] = None
 
     @property
@@ -69,6 +99,38 @@ class Pessoa:
         if self.ferias_inicio and self.ferias_fim:
             return f"{self.ferias_inicio} a {self.ferias_fim}"
         return ""
+
+
+def _parse_data_br(texto: str) -> date | None:
+    """Lê uma data no formato "DD/MM/AAAA" — tolerante: qualquer coisa
+    fora desse formato (campo vazio, texto livre) vira None em vez de
+    erro, já que os campos de data desses formulários são livres."""
+    partes = (texto or "").strip().split("/")
+    if len(partes) != 3:
+        return None
+    try:
+        dia, mes, ano = (int(p) for p in partes)
+        return date(ano, mes, dia)
+    except ValueError:
+        return None
+
+
+def licencas_em_vigor(pessoa: Pessoa, mes: int, ano: int) -> list[Licenca]:
+    """Licenças do servidor cujo período tem alguma sobreposição com o
+    mês/ano do livro sendo gerado — só essas saem anotadas na folha de
+    consolidação; uma licença já encerrada (ou que ainda nem começou) num
+    mês diferente do gerado não aparece."""
+    primeiro_dia = date(ano, mes, 1)
+    ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+    vigentes = []
+    for licenca in pessoa.licencas:
+        inicio = _parse_data_br(licenca.inicio)
+        fim = _parse_data_br(licenca.fim)
+        if inicio is None or fim is None:
+            continue
+        if inicio <= ultimo_dia and fim >= primeiro_dia:
+            vigentes.append(licenca)
+    return vigentes
 
 
 def chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
