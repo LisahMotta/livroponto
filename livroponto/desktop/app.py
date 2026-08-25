@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 import tkinter as tk
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -28,7 +28,12 @@ from ..pdf.builder import gerar_pdf, gerar_termos_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
 from .dialogs import DialogoExcecao, DialogoFerias, DialogoLicenca, DialogoPessoa
-from .preferencias import carregar_ultimo_caminho, salvar_ultimo_caminho
+from .preferencias import (
+    carregar_ultimo_caminho,
+    marcar_tutorial_visto,
+    salvar_ultimo_caminho,
+    tutorial_ja_visto,
+)
 
 _ICONE = Path(__file__).resolve().parent / "assets" / "icone_livro.png"
 _ICONES_DIR = Path(__file__).resolve().parent / "assets" / "icones"
@@ -41,6 +46,68 @@ _SUFIXO_ARQUIVO_TIPO = [
     (TipoServidor.ADMINISTRATIVO, "administrativo"),
     (TipoServidor.GESTAO, "gestao"),
     (TipoServidor.DOCENTE, "docente"),
+]
+
+
+# Conteúdo da janela "❓ Tutorial" (ver Aplicativo._mostrar_tutorial) —
+# um resumo rápido de cada aba/recurso, não um manual completo.
+_SECOES_TUTORIAL = [
+    (
+        "Aba Escola",
+        "Dados da escola (nome, diretoria de ensino, endereço etc.) e, embaixo, "
+        "UF/cidade/diretor(a)/rótulo da assinatura dos termos. O mês e o ano do "
+        "livro ficam na barra de cima, ao lado de \"Gerar Livro Ponto\" — não "
+        "estão mais aqui.\n",
+    ),
+    (
+        "Administrativo e Gestão",
+        "Adicionar/Editar/Remover servidor de cada tipo. O RG formata sozinho "
+        "(XX.XXX.XXX-X) enquanto digita, e o campo Cargo/Função vai lembrando "
+        "os cargos já usados antes, além dos sugeridos de fábrica. A coluna "
+        "\"Sel.\" marca quem deve ganhar folha impressa avulsa (só aquela "
+        "pessoa) na próxima vez que clicar em \"Gerar Livro Ponto\".\n",
+    ),
+    (
+        "Feriados e exceções",
+        "Feriados nacionais/estaduais já saem automáticos pela UF cadastrada. "
+        "Aqui só entra o que for específico da escola: recesso, ponto "
+        "facultativo, suspensão de atividades ou um sábado letivo (LETIVO).\n",
+    ),
+    (
+        "Férias e Licenças",
+        "Período de férias regulares e licenças (saúde/prêmio) de cada "
+        "servidor. Aparecem no campo FÉRIAS da folha e a licença sai anotada "
+        "na consolidação (verso) só nos meses em que estiver de fato em "
+        "vigor.\n",
+    ),
+    (
+        "Termos",
+        "Gera só os termos de abertura/encerramento de qualquer mês, "
+        "separadamente do livro completo — útil pra reimprimir um termo sem "
+        "gerar tudo de novo.\n",
+    ),
+    (
+        "Gerar Livro Ponto",
+        "O botão principal gera só as folhas (sem os termos, que têm aba "
+        "própria). \"Imprimir\" escolhe Folha e/ou Consolidação (verso) — "
+        "desmarque uma delas pra imprimir frente e verso em duas passadas "
+        "separadas na impressora. \"Incluir\" escolhe quais livros "
+        "(Administrativos/Docentes/Gestão) ganham folha nessa geração.\n",
+    ),
+    (
+        "Salvar, Backup e Importar planilha",
+        "\"Salvar\" grava no arquivo já aberto; \"Salvar como...\" sempre "
+        "pergunta onde. \"Backup\" cria uma cópia datada à parte (não mexe no "
+        "arquivo principal). \"Importar planilha...\" soma os servidores de "
+        "outro arquivo (nesse mesmo modelo) ao cadastro atual, sem substituir "
+        "nada.\n",
+    ),
+    (
+        "Ao abrir de novo",
+        "O app lembra o último cadastro salvo/aberto e recarrega sozinho na "
+        "próxima vez que for iniciado — não precisa ir em \"Abrir...\" toda "
+        "vez.",
+    ),
 ]
 
 
@@ -118,6 +185,9 @@ class Aplicativo(ttk.Window):
         self._atualizar_tudo()
         self._marcar_estado_salvo()
         self._tentar_reabrir_ultimo_cadastro()
+        if not tutorial_ja_visto():
+            self._mostrar_tutorial()
+            marcar_tutorial_visto()
 
     def _tentar_reabrir_ultimo_cadastro(self) -> None:
         """Reabre sozinho o último cadastro salvo/aberto (se houver e
@@ -199,6 +269,21 @@ class Aplicativo(ttk.Window):
             barra_arquivo, textvariable=self.var_aviso_nao_salvo, foreground="#a15c00", padding=(10, 0)
         ).pack(side="left")
 
+        barra_extra = ttk.Frame(self, padding=(8, 0, 8, 4))
+        barra_extra.pack(fill="x")
+        ttk.Button(
+            barra_extra, text="Backup", command=self._fazer_backup, bootstyle="secondary-outline"
+        ).pack(side="left")
+        ttk.Button(
+            barra_extra,
+            text="Importar planilha...",
+            command=self._importar_planilha_servidores,
+            bootstyle="secondary-outline",
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            barra_extra, text="❓ Tutorial", command=self._mostrar_tutorial, bootstyle="info-outline"
+        ).pack(side="right")
+
         barra_gerar = ttk.Frame(self, padding=(8, 0, 8, 4))
         barra_gerar.pack(fill="x")
         ttk.Button(
@@ -256,7 +341,7 @@ class Aplicativo(ttk.Window):
             barra_incluir, text="Docentes", variable=self.var_incluir_docentes, bootstyle="round-toggle"
         ).pack(side="left", padx=(0, 10))
         ttk.Checkbutton(
-            barra_incluir, text="Trio gestor", variable=self.var_incluir_gestao, bootstyle="round-toggle"
+            barra_incluir, text="Gestão", variable=self.var_incluir_gestao, bootstyle="round-toggle"
         ).pack(side="left")
 
         # Aviso bem visível — no topo, acima das abas — de que só alguém
@@ -838,6 +923,92 @@ class Aplicativo(ttk.Window):
         self._status(f"Cadastro salvo em {caminho}")
         messagebox.showinfo("Cadastro salvo", f"Salvo em:\n{caminho}", parent=self)
 
+    def _fazer_backup(self) -> None:
+        """Salva uma cópia datada do cadastro atual à parte — não mexe em
+        self.caminho_atual nem no "Salvar", é só uma cópia de segurança.
+        Vai pra uma pasta "Backups" ao lado do arquivo atual (se já
+        existir um), ou pra uma pasta padrão do usuário (cadastro novo,
+        nunca salvo)."""
+        if not self._sincronizar_escola():
+            return
+        if self.caminho_atual:
+            pasta = Path(self.caminho_atual).parent / "Backups"
+            base = Path(self.caminho_atual).stem
+        else:
+            pasta = Path.home() / ".livroponto" / "backups"
+            base = "cadastro"
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+            caminho_backup = pasta / f"backup_{base}_{carimbo}.xlsx"
+            salvar_modelo(self.dados, caminho_backup)
+        except OSError as exc:
+            messagebox.showerror("Erro ao fazer backup", str(exc), parent=self)
+            return
+        self._status(f"Backup salvo em {caminho_backup}")
+        messagebox.showinfo("Backup criado", f"Backup salvo em:\n{caminho_backup}", parent=self)
+
+    def _importar_planilha_servidores(self) -> None:
+        """Soma os servidores de outra planilha (no mesmo modelo .xlsx
+        deste app) ao cadastro atual — não substitui nada, só acrescenta.
+        Dados da escola, mês/ano etc. da planilha importada são
+        ignorados: só os servidores (aba "Pessoas") entram."""
+        caminho = filedialog.askopenfilename(
+            title="Importar servidores de uma planilha",
+            filetypes=[("Planilha Excel (modelo deste app)", "*.xlsx"), ("Todos os arquivos", "*.*")],
+        )
+        if not caminho:
+            return
+        try:
+            importado = ler_modelo(caminho)
+        except Exception as exc:  # noqa: BLE001 — mostra qualquer erro de leitura ao usuário
+            messagebox.showerror("Erro ao importar", str(exc), parent=self)
+            return
+        if not importado.pessoas:
+            messagebox.showinfo(
+                "Nada para importar", "Essa planilha não tem nenhum servidor cadastrado.", parent=self
+            )
+            return
+        self.dados.pessoas.extend(importado.pessoas)
+        self._atualizar_listas_pessoas()
+        self._atualizar_aviso_dados_nao_salvos()
+        n = len(importado.pessoas)
+        self._status(f"{n} servidor(es) importado(s) de {Path(caminho).name}")
+        messagebox.showinfo(
+            "Importação concluída",
+            f"{n} servidor(es) importado(s) de {Path(caminho).name} e somado(s) ao cadastro atual.",
+            parent=self,
+        )
+
+    def _mostrar_tutorial(self) -> None:
+        """Janela de ajuda com um resumo de cada aba/recurso do app —
+        aparece sozinha na primeira vez que o app é aberto (ver
+        __init__) e pode ser reaberta a qualquer momento pelo botão
+        "❓ Tutorial" na barra de ferramentas."""
+        janela = tk.Toplevel(self)
+        janela.title("Como usar o Livro Ponto")
+        janela.geometry("640x520")
+        janela.transient(self)
+
+        container = ttk.Frame(janela, padding=12)
+        container.pack(fill="both", expand=True)
+
+        texto = tk.Text(container, wrap="word", padx=8, pady=6, font=("", 10), relief="flat")
+        texto.tag_configure("titulo", font=("", 11, "bold"), spacing1=10, spacing3=4)
+        scroll = ttk.Scrollbar(container, orient="vertical", command=texto.yview)
+        texto.configure(yscrollcommand=scroll.set)
+        texto.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        for titulo, corpo in _SECOES_TUTORIAL:
+            texto.insert("end", titulo + "\n", "titulo")
+            texto.insert("end", corpo + "\n")
+        texto.configure(state="disabled")
+
+        ttk.Button(janela, text="Fechar", command=janela.destroy, bootstyle="success").pack(pady=(0, 12))
+        janela.bind("<Escape>", lambda _e: janela.destroy())
+        janela.focus_set()
+
     def _gerar_pdf(self) -> None:
         if not self._sincronizar_escola():
             return
@@ -852,7 +1023,7 @@ class Aplicativo(ttk.Window):
         if not tipos_incluidos:
             messagebox.showwarning(
                 "Nada para gerar",
-                "Marque ao menos um em \"Incluir\": Administrativos, Docentes e/ou Trio gestor.",
+                "Marque ao menos um em \"Incluir\": Administrativos, Docentes e/ou Gestão.",
                 parent=self,
             )
             return

@@ -29,3 +29,28 @@ def test_carregar_ultimo_caminho_com_arquivo_de_estado_corrompido_nao_quebra(tmp
     monkeypatch.setattr(preferencias, "_ARQUIVO_ESTADO", arquivo_estado)
 
     assert preferencias.carregar_ultimo_caminho() is None
+
+
+def test_tutorial_ja_visto_comeca_falso(tmp_path, monkeypatch):
+    monkeypatch.setattr(preferencias, "_ARQUIVO_ESTADO", tmp_path / "estado.json")
+    assert preferencias.tutorial_ja_visto() is False
+
+
+def test_marcar_tutorial_visto_faz_o_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(preferencias, "_ARQUIVO_ESTADO", tmp_path / "estado.json")
+
+    preferencias.marcar_tutorial_visto()
+
+    assert preferencias.tutorial_ja_visto() is True
+
+
+def test_ultimo_caminho_e_tutorial_visto_nao_se_atropelam(tmp_path, monkeypatch):
+    """As duas preferências moram no mesmo arquivo — salvar uma não pode
+    apagar a outra."""
+    monkeypatch.setattr(preferencias, "_ARQUIVO_ESTADO", tmp_path / "estado.json")
+
+    preferencias.salvar_ultimo_caminho(str(tmp_path / "cadastro.xlsx"))
+    preferencias.marcar_tutorial_visto()
+
+    assert preferencias.carregar_ultimo_caminho() == str(tmp_path / "cadastro.xlsx")
+    assert preferencias.tutorial_ja_visto() is True

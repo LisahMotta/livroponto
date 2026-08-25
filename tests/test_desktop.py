@@ -36,6 +36,12 @@ def app(monkeypatch):
 
     monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
     monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    # Idem pro tutorial de primeiro uso — sem isso, o primeiro teste da
+    # sessão abriria a janela de verdade (e gravaria tutorial_visto=true
+    # no ~/.livroponto/estado.json de verdade) e os demais nem cobririam
+    # mais esse caminho.
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: True)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: None)
 
     aplicativo = Aplicativo()
     yield aplicativo
@@ -245,6 +251,8 @@ def test_app_reabre_sozinho_o_ultimo_cadastro_salvo(tmp_path, monkeypatch):
 
     monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: str(caminho))
     monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: True)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: None)
 
     aplicativo = app_mod.Aplicativo()
     try:
@@ -260,6 +268,8 @@ def test_app_sem_ultimo_caminho_lembrado_comeca_em_branco(monkeypatch):
 
     monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
     monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: True)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: None)
 
     aplicativo = app_mod.Aplicativo()
     try:
@@ -277,12 +287,131 @@ def test_app_com_ultimo_caminho_apagado_comeca_em_branco_sem_quebrar(tmp_path, m
 
     monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: str(tmp_path / "nao-existe-mais.xlsx"))
     monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: True)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: None)
 
     aplicativo = app_mod.Aplicativo()
     try:
         assert aplicativo.caminho_atual is None
     finally:
         aplicativo.destroy()
+
+
+def test_tutorial_aparece_sozinho_na_primeira_vez(monkeypatch):
+    import livroponto.desktop.app as app_mod
+
+    chamado = []
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: False)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: chamado.append("marcado"))
+    monkeypatch.setattr(app_mod.Aplicativo, "_mostrar_tutorial", lambda self: chamado.append("mostrado"))
+
+    aplicativo = app_mod.Aplicativo()
+    try:
+        assert chamado == ["mostrado", "marcado"]
+    finally:
+        aplicativo.destroy()
+
+
+def test_tutorial_nao_aparece_sozinho_se_ja_foi_visto(monkeypatch):
+    import livroponto.desktop.app as app_mod
+
+    chamado = []
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+    monkeypatch.setattr(app_mod, "tutorial_ja_visto", lambda: True)
+    monkeypatch.setattr(app_mod, "marcar_tutorial_visto", lambda: chamado.append("marcado"))
+    monkeypatch.setattr(app_mod.Aplicativo, "_mostrar_tutorial", lambda self: chamado.append("mostrado"))
+
+    aplicativo = app_mod.Aplicativo()
+    try:
+        assert chamado == []
+    finally:
+        aplicativo.destroy()
+
+
+def test_botao_tutorial_abre_janela_com_conteudo(app):
+    """Pedido do usuário: um botão de acesso rápido ao tutorial, pra
+    reabrir a qualquer momento (não só na primeira vez)."""
+    app._mostrar_tutorial()
+    janelas = [w for w in app.winfo_children() if isinstance(w, tk.Toplevel)]
+    assert len(janelas) == 1
+    janela = janelas[0]
+    assert janela.title() == "Como usar o Livro Ponto"
+    janela.destroy()
+
+
+def test_backup_salva_copia_datada_sem_mudar_caminho_atual(app, tmp_path, monkeypatch):
+    """Pedido do usuário: um botão de backup — diferente de Salvar, cria
+    uma cópia à parte sem virar "o" arquivo do cadastro."""
+    app.caminho_atual = str(tmp_path / "cadastro.xlsx")
+    app.var_nome.set("EE Exemplo Fictício")
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    app._fazer_backup()
+
+    arquivos = list((tmp_path / "Backups").glob("backup_cadastro_*.xlsx"))
+    assert len(arquivos) == 1
+    assert app.caminho_atual == str(tmp_path / "cadastro.xlsx")
+
+
+def test_backup_sem_caminho_atual_usa_pasta_padrao_do_usuario(app, tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    app._fazer_backup()
+
+    arquivos = list((tmp_path / ".livroponto" / "backups").glob("backup_cadastro_*.xlsx"))
+    assert len(arquivos) == 1
+
+
+def test_importar_planilha_soma_servidores_ao_cadastro_atual(app, tmp_path, monkeypatch):
+    """Pedido do usuário: um botão pra subir uma planilha Excel com
+    dados dos servidores — soma ao cadastro atual, sem substituir nada."""
+    from livroponto.models import Escola, LivroPontoConfig
+    from livroponto.readers.template_reader import salvar_modelo
+
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Já Cadastrado"))
+    app._atualizar_listas_pessoas()
+
+    caminho_importar = tmp_path / "outros_servidores.xlsx"
+    outro_config = LivroPontoConfig(
+        escola=Escola(nome="Outra Escola"),
+        mes=4,
+        ano=2026,
+        pessoas=[
+            _pessoa_exemplo(nome="Importado Um"),
+            _pessoa_exemplo(nome="Importado Dois", rg="9.999.999-9"),
+        ],
+    )
+    salvar_modelo(outro_config, caminho_importar)
+
+    monkeypatch.setattr(filedialog, "askopenfilename", lambda **kw: str(caminho_importar))
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    app._importar_planilha_servidores()
+
+    nomes = {p.nome for p in app.dados.pessoas}
+    assert nomes == {"Já Cadastrado", "Importado Um", "Importado Dois"}
+    assert app.dados.escola.nome != "Outra Escola"  # não mexe nos dados da própria escola
+
+
+def test_importar_planilha_vazia_avisa_e_nao_muda_nada(app, tmp_path, monkeypatch):
+    from livroponto.models import Escola, LivroPontoConfig
+    from livroponto.readers.template_reader import salvar_modelo
+
+    caminho_vazio = tmp_path / "vazio.xlsx"
+    salvar_modelo(LivroPontoConfig(escola=Escola(), mes=4, ano=2026, pessoas=[]), caminho_vazio)
+
+    monkeypatch.setattr(filedialog, "askopenfilename", lambda **kw: str(caminho_vazio))
+    avisos = []
+    monkeypatch.setattr(messagebox, "showinfo", lambda titulo, msg, **k: avisos.append(titulo))
+
+    app._importar_planilha_servidores()
+
+    assert app.dados.pessoas == []
+    assert avisos == ["Nada para importar"]
 
 
 def test_app_comeca_sem_aviso_de_dados_nao_salvos(app):
