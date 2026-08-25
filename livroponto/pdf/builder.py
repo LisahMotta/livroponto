@@ -323,8 +323,12 @@ def _tabela_dias(dias, styles) -> Table:
     """A grade "Dia | Entrada | Saída | Observações | Visto do superior
     imediato". Sábados, domingos, feriados e exceções cadastradas (recesso,
     ponto facultativo etc.) são marcados automaticamente — fundo colorido e
-    rótulo, ocupando o espaço de Entrada/Saída; dias úteis ficam em branco
-    para preenchimento manual, como no formulário original."""
+    o nome do dia (ex.: "SÁBADO", "FERIADO") preenchendo Entrada e Saída,
+    mantendo as mesmas colunas dos dias normais (só sem precisar de
+    preenchimento manual); dias úteis ficam em branco pra isso, como no
+    formulário original. Feriado também já sai com "Vide verso" na coluna
+    Observações, apontando pra anotação detalhada na folha de
+    consolidação (ver `_texto_feriados_excecoes`)."""
     linha_grupo = ["Dia", "Entrada", "", "Saída", "", "Observações", "Visto do superior\nimediato"]
     cabecalho = ["", "Hora", "Assinatura", "Hora", "Assinatura", "", ""]
     dados = [linha_grupo, cabecalho]
@@ -341,8 +345,25 @@ def _tabela_dias(dias, styles) -> Table:
             continue
         sigla = _SIGLA_TIPO.get(dia.tipo, dia.tipo)
         texto = f"{sigla} - {dia.rotulo}" if dia.rotulo and dia.rotulo != sigla else sigla
-        dados.append([str(dia.dia), Paragraph(texto, styles["CelTabelaPequena"]), "", "", "", "", ""])
-        estilos_extra.append(("SPAN", (1, i), (4, i)))
+        # Sábado/domingo/feriado (e demais exceções) mantêm as mesmas
+        # colunas Entrada/Saída dos dias normais — só troca o preenchimento
+        # manual pelo nome do dia em cada uma, em vez de uma única faixa
+        # mesclada por cima das duas (o que fazia a linha parecer "diferente"
+        # das demais, sem a divisão Entrada/Saída visível).
+        observacao = "Vide verso" if dia.tipo == "FERIADO" else ""
+        dados.append(
+            [
+                str(dia.dia),
+                Paragraph(texto, styles["CelTabelaPequena"]),
+                "",
+                Paragraph(texto, styles["CelTabelaPequena"]),
+                "",
+                observacao,
+                "",
+            ]
+        )
+        estilos_extra.append(("SPAN", (1, i), (2, i)))
+        estilos_extra.append(("SPAN", (3, i), (4, i)))
         cor = _COR_SITUACAO.get(dia.tipo, colors.whitesmoke)
         estilos_extra.append(("BACKGROUND", (0, i), (4, i), cor))
 

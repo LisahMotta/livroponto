@@ -2,7 +2,15 @@ from reportlab.platypus import KeepTogether, Paragraph, Table
 
 from livroponto.calendario import montar_calendario
 from livroponto.models import Escola, Licenca, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
-from livroponto.pdf.builder import _bloco_tipo, _folha_consolidacao, _secao_financeira, _styles, _termo, gerar_pdf
+from livroponto.pdf.builder import (
+    _bloco_tipo,
+    _folha_consolidacao,
+    _secao_financeira,
+    _styles,
+    _tabela_dias,
+    _termo,
+    gerar_pdf,
+)
 
 
 def _config_exemplo() -> LivroPontoConfig:
@@ -453,6 +461,51 @@ def test_folha_consolidacao_lista_feriados_e_excecoes_do_mes():
     elementos = _folha_consolidacao(config, pessoa, dias, _styles())
     textos = _textos(elementos)
     assert any("Feriados e exceções do mês" in t and "RECESSO" in t and "08/04" in t for t in textos)
+
+
+def test_tabela_dias_sabado_domingo_feriado_preenchem_entrada_e_saida_como_os_demais_dias():
+    """Pedido do usuário: sábado, domingo e feriado devem ficar "iguais
+    aos outros dias" na folha de ponto — com coluna própria de Entrada
+    e de Saída (não uma faixa só mesclando as duas), cada uma com o
+    nome do dia."""
+    from livroponto.models import DiaNaoLetivo
+
+    excecoes = [DiaNaoLetivo(mes=4, dia=8, tipo="FERIADO", descricao="Feriado de teste")]
+    dias = montar_calendario(2026, 4, uf="SP", excecoes=excecoes)
+
+    tabela = _tabela_dias(dias, _styles())
+
+    dia_feriado = next(d for d in dias if d.dia == 8)
+    assert dia_feriado.tipo == "FERIADO"
+    dia_sabado = next(d for d in dias if d.tipo == "SABADO")
+    dia_domingo = next(d for d in dias if d.tipo == "DOMINGO")
+
+    for dia_especial, rotulo in ((dia_feriado, "FERIADO"), (dia_sabado, "SÁBADO"), (dia_domingo, "DOMINGO")):
+        linha = dia_especial.dia + 1  # +2 do cabeçalho, -1 porque dia 1 é índice 0 em "dias"
+        entrada = tabela._cellvalues[linha][1]
+        saida = tabela._cellvalues[linha][3]
+        assert rotulo in entrada.text
+        assert rotulo in saida.text
+
+
+def test_tabela_dias_feriado_anota_vide_verso_na_observacao_sabado_domingo_nao():
+    """Pedido do usuário: a linha do feriado leva "Vide verso" na coluna
+    Observações, apontando pra anotação detalhada no verso — sábado e
+    domingo não têm nada anotado no verso, então não levam a nota."""
+    from livroponto.models import DiaNaoLetivo
+
+    excecoes = [DiaNaoLetivo(mes=4, dia=8, tipo="FERIADO", descricao="Feriado de teste")]
+    dias = montar_calendario(2026, 4, uf="SP", excecoes=excecoes)
+
+    tabela = _tabela_dias(dias, _styles())
+
+    dia_feriado = next(d for d in dias if d.dia == 8)
+    dia_sabado = next(d for d in dias if d.tipo == "SABADO")
+
+    linha_feriado = dia_feriado.dia + 1
+    linha_sabado = dia_sabado.dia + 1
+    assert tabela._cellvalues[linha_feriado][5] == "Vide verso"
+    assert tabela._cellvalues[linha_sabado][5] == ""
 
 
 def test_folha_consolidacao_sem_feriados_no_mes_nao_anota_nada():
