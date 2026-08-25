@@ -22,7 +22,7 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
 
 from ..calendario import nome_mes
-from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg
+from ..models import Escola, LivroPontoConfig, TipoServidor, chave_ordenacao_rg, formatar_rg
 from ..pdf.builder import gerar_pdf, gerar_termos_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
@@ -191,8 +191,13 @@ class Aplicativo(ttk.Window):
         aba.columnconfigure(1, weight=1)
         aba.columnconfigure(3, weight=1)
 
+        # Rótulo alinhado à direita (encostado no campo) — a coluna do
+        # rótulo é larga o bastante pra caber o texto mais comprido
+        # ("Rótulo da assinatura (padrão: ...)"), então com o rótulo
+        # alinhado à esquerda os campos mais curtos ("Nome da escola" etc.)
+        # ficavam com um vão enorme entre o texto e a caixa.
         def campo(r: int, c: int, rotulo: str, largura: int = 34) -> tk.StringVar:
-            ttk.Label(aba, text=rotulo).grid(row=r, column=c, sticky="w", padx=(0, 8), pady=4)
+            ttk.Label(aba, text=rotulo).grid(row=r, column=c, sticky="e", padx=(0, 8), pady=4)
             var = tk.StringVar()
             ttk.Entry(aba, textvariable=var, width=largura).grid(row=r, column=c + 1, sticky="we", pady=4)
             return var
@@ -211,13 +216,13 @@ class Aplicativo(ttk.Window):
 
         ttk.Separator(aba).grid(row=6, column=0, columnspan=4, sticky="we", pady=10)
 
-        ttk.Label(aba, text="Mês").grid(row=7, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Label(aba, text="Mês").grid(row=7, column=0, sticky="e", padx=(0, 8), pady=4)
         self.var_mes = tk.StringVar(value=MESES_CAP[0])
         ttk.Combobox(
             aba, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
         ).grid(row=7, column=1, sticky="w", pady=4)
 
-        ttk.Label(aba, text="Ano").grid(row=7, column=2, sticky="w", padx=(12, 8), pady=4)
+        ttk.Label(aba, text="Ano").grid(row=7, column=2, sticky="e", padx=(12, 8), pady=4)
         self.var_ano = tk.StringVar()
         ttk.Spinbox(aba, from_=2000, to=2100, textvariable=self.var_ano, width=8).grid(
             row=7, column=3, sticky="w", pady=4
@@ -714,7 +719,14 @@ class Aplicativo(ttk.Window):
                 "",
                 "end",
                 iid=str(i),
-                values=(p.nome, p.rg, p.cargo, jornada, "Sim" if p.ponto else "Não", _observacoes_exibicao(p)),
+                values=(
+                    p.nome,
+                    formatar_rg(p.rg),
+                    p.cargo,
+                    jornada,
+                    "Sim" if p.ponto else "Não",
+                    _observacoes_exibicao(p),
+                ),
             )
 
     def _atualizar_listas_pessoas(self) -> None:
@@ -813,7 +825,10 @@ class Aplicativo(ttk.Window):
         itens = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
         for i, p in itens:
             tree.insert(
-                "", "end", iid=str(i), values=(p.nome, p.tipo.value, p.rg, p.ferias_inicio, p.ferias_fim)
+                "",
+                "end",
+                iid=str(i),
+                values=(p.nome, p.tipo.value, formatar_rg(p.rg), p.ferias_inicio, p.ferias_fim),
             )
 
     def _pessoa_selecionada_ferias(self) -> int | None:
@@ -839,7 +854,7 @@ class Aplicativo(ttk.Window):
     def _atualizar_lista_licencas(self) -> None:
         pessoas_ordenadas = sorted(enumerate(self.dados.pessoas), key=lambda item: chave_ordenacao_rg(item[1]))
         self.combo_licenca_servidor.configure(
-            values=[f"{p.nome} — {p.rg}" if p.rg else p.nome for _, p in pessoas_ordenadas]
+            values=[f"{p.nome} — {formatar_rg(p.rg)}" if p.rg else p.nome for _, p in pessoas_ordenadas]
         )
         self._indices_combo_licenca = [i for i, _ in pessoas_ordenadas]
         if self._indices_combo_licenca and self.combo_licenca_servidor.current() == -1:

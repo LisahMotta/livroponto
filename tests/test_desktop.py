@@ -387,6 +387,27 @@ def test_dialogo_pessoa_cargo_sugere_gestao_e_administrativo_mas_aceita_texto_li
     assert dlg.var_cargo.get() == "Dirigente Regional de Ensino"
 
 
+def test_dialogo_pessoa_formata_rg_automaticamente_ao_digitar(app, monkeypatch):
+    """Pedido do usuário: o campo RG do cadastro formata sozinho no
+    padrão XX.XXX.XXX-X conforme os números (ou letra, em RG de outro
+    estado) vão sendo digitados."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    dlg.var_rg.set("123456789")
+    assert dlg.var_rg.get() == "12.345.678-9"
+
+    dlg.var_rg.set("m1234567")
+    assert dlg.var_rg.get() == "M1.234.567"
+
+
+def test_lista_de_pessoas_mostra_rg_formatado_mesmo_cadastrado_sem_pontuacao(app):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano", rg="123456789"))
+    app._atualizar_listas_pessoas()
+    valores = app.tree_administrativo.item("0", "values")
+    assert valores[1] == "12.345.678-9"
+
+
 def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):
     monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
 

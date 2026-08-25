@@ -7,7 +7,7 @@ from tkinter import messagebox
 
 import ttkbootstrap as ttk
 
-from ..models import TIPOS_LICENCA, DiaNaoLetivo, Licenca, Pessoa, TipoServidor
+from ..models import TIPOS_LICENCA, DiaNaoLetivo, Licenca, Pessoa, TipoServidor, formatar_rg
 
 TIPOS_PESSOA = ["ADMINISTRATIVO", "DOCENTE", "GESTAO"]
 TIPOS_EXCECAO = ["FERIADO", "RECESSO", "PONTO_FACULTATIVO", "SUSPENSAO", "LETIVO"]
@@ -52,6 +52,28 @@ def _linha(frame: tk.Widget, r: int, rotulo: str, largura: int = 32) -> tk.Strin
     return var
 
 
+def _aplicar_mascara_rg(var: tk.StringVar) -> None:
+    """Formata o RG automaticamente enquanto é digitado, no padrão
+    XX.XXX.XXX-X (ver `formatar_rg` em models.py — aceita letra, ex.:
+    "M1.234.567-8", RG comum em outros estados)."""
+    formatando = False
+
+    def _ao_digitar(*_args: object) -> None:
+        nonlocal formatando
+        if formatando:
+            return
+        bruto = var.get()
+        formatado = formatar_rg(bruto)
+        if formatado != bruto:
+            formatando = True
+            try:
+                var.set(formatado)
+            finally:
+                formatando = False
+
+    var.trace_add("write", _ao_digitar)
+
+
 class DialogoPessoa(_DialogoBase):
     def __init__(self, parent: tk.Widget, pessoa: Pessoa | None = None, tipo_inicial: TipoServidor | None = None):
         super().__init__(parent, "Editar servidor" if pessoa else "Adicionar servidor")
@@ -77,6 +99,7 @@ class DialogoPessoa(_DialogoBase):
         self.var_nome = _linha(corpo, r, "Nome")
         r += 1
         self.var_rg = _linha(corpo, r, "RG")
+        _aplicar_mascara_rg(self.var_rg)
         r += 1
         ttk.Label(corpo, text="Cargo/Função").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
         self.var_cargo = tk.StringVar()

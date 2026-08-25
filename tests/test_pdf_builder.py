@@ -138,6 +138,79 @@ def test_ordenacao_por_rg_sem_rg_cadastrado_vai_pro_fim():
     assert [p.nome for p in ordenados] == ["Com RG", "Sem RG"]
 
 
+def test_ordenacao_por_rg_letra_no_inicio_vem_sempre_primeiro():
+    """Pedido do usuário: RG de outro estado com letra (ex.:
+    "M1.234.567-8") sempre vem primeiro, antes de qualquer RG só
+    numérico — não entra na comparação numérica normal."""
+    com_letra = Pessoa(nome="Com Letra", tipo=TipoServidor.ADMINISTRATIVO, rg="M1.234.567-8")
+    numerico_pequeno = Pessoa(nome="Numérico Pequeno", tipo=TipoServidor.ADMINISTRATIVO, rg="1")
+
+    ordenados = sorted([numerico_pequeno, com_letra], key=chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Com Letra", "Numérico Pequeno"]
+
+
+def test_ordenacao_por_rg_zero_a_esquerda_nao_conta_pra_comparacao():
+    """Pedido do usuário: "01.234.567-8" vale como 1234567 (não
+    01234567) na hora de comparar com outro RG."""
+    com_zero = Pessoa(nome="Com Zero", tipo=TipoServidor.ADMINISTRATIVO, rg="01.234.567-8")
+    maior = Pessoa(nome="Maior", tipo=TipoServidor.ADMINISTRATIVO, rg="2.000.000-0")
+
+    ordenados = sorted([maior, com_zero], key=chave_ordenacao_rg)
+    assert [p.nome for p in ordenados] == ["Com Zero", "Maior"]
+
+
+def test_formatar_rg_padrao_numerico():
+    from livroponto.models import formatar_rg
+
+    assert formatar_rg("123456789") == "12.345.678-9"
+    assert formatar_rg("12.345.678-9") == "12.345.678-9"  # idempotente
+
+
+def test_formatar_rg_mantem_zero_a_esquerda():
+    """Diferente da ordenação, a formatação preserva o zero à esquerda
+    como parte do valor digitado — só reorganiza a pontuação."""
+    from livroponto.models import formatar_rg
+
+    assert formatar_rg("012345678") == "01.234.567-8"
+
+
+def test_formatar_rg_aceita_letra():
+    from livroponto.models import formatar_rg
+
+    assert formatar_rg("M1234567") == "M1.234.567"
+    assert formatar_rg("m12345678") == "M1.234.567-8"
+
+
+def test_formatar_rg_incompleto_formata_progressivamente():
+    """Formata conforme os caracteres vão sendo digitados — a pontuação
+    só aparece quando o próximo bloco começa."""
+    from livroponto.models import formatar_rg
+
+    assert formatar_rg("") == ""
+    assert formatar_rg("1") == "1"
+    assert formatar_rg("12") == "12"
+    assert formatar_rg("123") == "12.3"
+    assert formatar_rg("12345") == "12.345"
+    assert formatar_rg("123456") == "12.345.6"
+
+
+def test_bloco_dados_pessoa_imprime_rg_formatado_mesmo_sem_pontuacao_salva():
+    from livroponto.pdf.builder import _bloco_dados_pessoa
+
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, rg="123456789")
+    tabela = _bloco_dados_pessoa(pessoa, _styles())
+    assert "12.345.678-9" in tabela._cellvalues[0][1].text
+
+
+def test_bloco_dados_docente_imprime_rg_formatado_com_letra():
+    from livroponto.pdf.builder import _bloco_dados_docente
+
+    config = _config_exemplo()
+    pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.DOCENTE, rg="M1234567")
+    tabela = _bloco_dados_docente(config, pessoa, _styles())
+    assert "M1.234.567" in tabela._cellvalues[0][1].text
+
+
 def _textos(elementos) -> list[str]:
     return [e.text for e in elementos if isinstance(e, Paragraph)]
 

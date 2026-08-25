@@ -39,6 +39,7 @@ from ..models import (
     TipoServidor,
     chave_ordenacao_rg,
     ferias_em_vigor,
+    formatar_rg,
     licencas_em_vigor,
 )
 
@@ -277,7 +278,7 @@ def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
     P_nome = lambda t: Paragraph(t, styles["CampoNome"])  # noqa: E731
 
     linhas = [
-        [P_nome(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", pessoa.rg))],
+        [P_nome(_linha_campo("SERVIDOR", pessoa.nome)), P(_linha_campo("RG", formatar_rg(pessoa.rg)))],
         [P(_linha_campo("CARGO/FUNÇÃO", pessoa.cargo)), ""],
     ]
     if pessoa.tipo in _TIPOS_FOLHA_PONTO:
@@ -596,7 +597,11 @@ def _bloco_dados_docente(config: LivroPontoConfig, pessoa: Pessoa, styles) -> Ta
     P = lambda t: Paragraph(t, styles["Campo"])  # noqa: E731
     P_nome = lambda t: Paragraph(t, styles["CampoNomeDocente"])  # noqa: E731
     linhas = [
-        [P_nome(_linha_campo("NOME", pessoa.nome)), P(_linha_campo("RG", pessoa.rg)), P("<b>FAIXA/NÍVEL:</b>")],
+        [
+            P_nome(_linha_campo("NOME", pessoa.nome)),
+            P(_linha_campo("RG", formatar_rg(pessoa.rg))),
+            P("<b>FAIXA/NÍVEL:</b>"),
+        ],
         [
             P(_linha_campo("SITUAÇÃO", pessoa.cargo)),
             P(_linha_campo("CATEGORIA", pessoa.categoria)),

@@ -148,9 +148,33 @@ def ferias_em_vigor(pessoa: Pessoa, mes: int, ano: int) -> bool:
     return inicio <= ultimo_dia and fim >= primeiro_dia
 
 
+def formatar_rg(texto: str) -> str:
+    """Formata um RG no padrão XX.XXX.XXX-X (2-3-3-1 caracteres) conforme
+    vai sendo digitado — usada tanto pelo campo RG do cadastro (formata a
+    cada tecla) quanto pela impressão da folha de ponto/frequência (pra
+    RGs importados ou digitados antes dessa formatação existir também
+    saírem no padrão).
+
+    Só reorganiza a pontuação: mantém os caracteres na ordem em que
+    foram digitados (não descarta zero à esquerda, não completa dígito
+    faltando) e aceita letra no meio dos números — RG de outro estado às
+    vezes vem com uma letra (ex.: "M1.234.567-8") em vez de só dígitos."""
+    brutos = re.sub(r"[^0-9A-Za-z]", "", texto or "").upper()[:9]
+    blocos = [brutos[0:2], brutos[2:5], brutos[5:8], brutos[8:9]]
+    blocos = [b for b in blocos if b]
+    if not blocos:
+        return ""
+    separadores = [".", ".", "-"]
+    resultado = blocos[0]
+    for bloco, separador in zip(blocos[1:], separadores):
+        resultado += separador + bloco
+    return resultado
+
+
 def chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
     """Chave de ordenação por número de RG — numérica, não textual ("9"
-    vem antes de "10"); quem não tem RG cadastrado vai para o fim,
+    vem antes de "10"); RG com letra (de outro estado, ex.: "M1.234.567-8")
+    sempre vem primeiro; quem não tem RG cadastrado vai para o fim,
     ordenado por nome. Usada tanto na lista de servidores do app desktop
     quanto na ordem das folhas do PDF gerado, para as duas ficarem
     consistentes.
@@ -160,12 +184,18 @@ def chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
     RG com dígito verificador ficaria com um dígito a mais que um RG
     equivalente sem traço (ex.: "9.876.543-2" -> 98765432, 9 dígitos,
     contra "16304137" -> 16304137, 8 dígitos) e pareceria maior do que
-    realmente é, saindo antes na ordem quando deveria vir depois."""
+    realmente é, saindo antes na ordem quando deveria vir depois.
+
+    O zero à esquerda também não conta pra comparação numérica (ex.:
+    "01.234.567-8" -> 1234567, não 01234567) — é só o `int()` de baixo
+    convertendo naturalmente, sem descartar dígito nenhum do RG em si."""
     numero = (pessoa.rg or "").split("-")[0]
-    digitos = re.sub(r"\D", "", numero)
-    if digitos:
-        return (0, int(digitos), pessoa.nome)
-    return (1, 0, pessoa.nome)
+    bruto = re.sub(r"[^0-9A-Za-z]", "", numero)
+    if not bruto:
+        return (2, 0, pessoa.nome)
+    if re.search(r"[A-Za-z]", bruto):
+        return (0, 0, pessoa.nome)
+    return (1, int(bruto), pessoa.nome)
 
 
 @dataclass
