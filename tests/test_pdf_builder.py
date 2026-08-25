@@ -253,6 +253,22 @@ def test_licencas_em_vigor_considera_sobreposicao_de_periodo():
     }
 
 
+def test_ferias_em_vigor_considera_sobreposicao_de_periodo():
+    from livroponto.models import ferias_em_vigor
+
+    com_sobreposicao = Pessoa(
+        nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
+    )
+    fora_do_mes = Pessoa(
+        nome="Beltrano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/07/2026", ferias_fim="02/08/2026"
+    )
+    sem_data = Pessoa(nome="Sem Data", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026")
+
+    assert ferias_em_vigor(com_sobreposicao, mes=4, ano=2026) is True
+    assert ferias_em_vigor(fora_do_mes, mes=4, ano=2026) is False
+    assert ferias_em_vigor(sem_data, mes=4, ano=2026) is False
+
+
 def test_licenca_rotulo_e_periodo():
     saude = Licenca(tipo="SAUDE", inicio="10/04/2026", fim="20/04/2026")
     assert saude.rotulo == "Licença Saúde"
@@ -263,14 +279,17 @@ def test_licenca_rotulo_e_periodo():
     assert premio.periodo == ""
 
 
-def test_secao_financeira_preenche_ferias_cadastradas():
+def test_secao_financeira_nao_preenche_ferias_mesmo_cadastrada():
+    """Pedido do usuário: as férias saem só no verso (Consolidação) do
+    mês em que efetivamente caem — o rodapé "INFORMAÇÕES FINANCEIRAS" da
+    frente fica sempre em branco, igual ao formulário original."""
     pessoa = Pessoa(
         nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
     )
     tabela = _secao_financeira(pessoa, _styles())
     linha_ferias = tabela._cellvalues[1][1]
-    assert "03/04/2026" in linha_ferias.text
-    assert "02/05/2026" in linha_ferias.text
+    assert "___/___/___" in linha_ferias.text
+    assert "03/04/2026" not in linha_ferias.text
 
 
 def test_secao_financeira_sem_ferias_cadastradas_fica_em_branco():
@@ -280,14 +299,27 @@ def test_secao_financeira_sem_ferias_cadastradas_fica_em_branco():
     assert "___/___/___" in linha_ferias.text
 
 
-def test_folha_consolidacao_anota_ferias_regulares_no_verso():
-    config = _config_exemplo()
+def test_folha_consolidacao_anota_ferias_regulares_no_verso_do_mes_selecionado():
+    config = _config_exemplo()  # mes=4, ano=2026
     pessoa = Pessoa(
         nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
     )
     elementos = _folha_consolidacao(config, pessoa, [], _styles())
     textos = _textos(elementos)
     assert any("Férias Regulares" in t and "03/04/2026 a 02/05/2026" in t for t in textos)
+
+
+def test_folha_consolidacao_nao_anota_ferias_fora_do_mes_do_livro():
+    """Pedido do usuário: férias regulares só saem anotadas no verso do
+    mês em que caem — um período de férias de outro mês não deve
+    aparecer no livro gerado para o mês selecionado."""
+    config = _config_exemplo()  # mes=4, ano=2026
+    pessoa = Pessoa(
+        nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/07/2026", ferias_fim="02/08/2026"
+    )
+    elementos = _folha_consolidacao(config, pessoa, [], _styles())
+    textos = _textos(elementos)
+    assert not any("Férias Regulares" in t for t in textos)
 
 
 def test_folha_consolidacao_sem_ferias_nao_anota_nada():

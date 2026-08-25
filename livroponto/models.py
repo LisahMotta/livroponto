@@ -133,6 +133,21 @@ def licencas_em_vigor(pessoa: Pessoa, mes: int, ano: int) -> list[Licenca]:
     return vigentes
 
 
+def ferias_em_vigor(pessoa: Pessoa, mes: int, ano: int) -> bool:
+    """Verdadeiro se o período de férias regulares do servidor (aba
+    Férias) tem alguma sobreposição com o mês/ano do livro sendo gerado —
+    mesma lógica de `licencas_em_vigor`, usada pra só anotar as férias no
+    verso (Consolidação) do mês em que elas de fato caem, e não em todo
+    livro gerado dali pra frente."""
+    inicio = _parse_data_br(pessoa.ferias_inicio)
+    fim = _parse_data_br(pessoa.ferias_fim)
+    if inicio is None or fim is None:
+        return False
+    primeiro_dia = date(ano, mes, 1)
+    ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+    return inicio <= ultimo_dia and fim >= primeiro_dia
+
+
 def chave_ordenacao_rg(pessoa: Pessoa) -> tuple:
     """Chave de ordenação por número de RG — numérica, não textual ("9"
     vem antes de "10"); quem não tem RG cadastrado vai para o fim,

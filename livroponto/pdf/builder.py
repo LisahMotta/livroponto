@@ -33,7 +33,14 @@ from reportlab.platypus import (
 )
 
 from ..calendario import montar_calendario, nome_mes
-from ..models import LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg, licencas_em_vigor
+from ..models import (
+    LivroPontoConfig,
+    Pessoa,
+    TipoServidor,
+    chave_ordenacao_rg,
+    ferias_em_vigor,
+    licencas_em_vigor,
+)
 
 # Qualificação do tipo de servidor, do jeito que sai no formulário oficial
 # (fotografado pelo usuário): "registro do Ponto do Pessoal Administrativo
@@ -380,13 +387,14 @@ def _texto_feriados_excecoes(dias, mes: int) -> str:
 
 def _secao_financeira(pessoa: Pessoa, styles) -> Table:
     """Rodapé "INFORMAÇÕES FINANCEIRAS" (férias, GTN, ACA, serviço
-    extraordinário, substituição eventual, vale transporte). O período de
-    férias sai preenchido automaticamente se cadastrado para o servidor;
-    os demais campos ficam em branco para preenchimento manual, igual ao
-    formulário original."""
+    extraordinário, substituição eventual, vale transporte) — todos os
+    campos em branco para preenchimento manual, igual ao formulário
+    original. O período de férias cadastrado na aba Férias não sai aqui:
+    ele só é impresso automaticamente no verso (Consolidação) do mês em
+    que efetivamente cai (ver `_folha_consolidacao`)."""
     P = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
-    ferias_de = pessoa.ferias_inicio or "___/___/___"
-    ferias_ate = pessoa.ferias_fim or "___/___/___"
+    ferias_de = "___/___/___"
+    ferias_ate = "___/___/___"
     dados = [
         ["INFORMAÇÕES FINANCEIRAS", "", "", "", "", ""],
         [
@@ -499,8 +507,8 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
 def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) -> list:
     """Verso da folha de ponto: mesmo cabeçalho (sem "PAG"), título
     CONSOLIDAÇÃO, as anotações automáticas já impressas (feriados e
-    exceções do mês, férias regulares cadastradas, licenças em vigor
-    nesse mês — saúde/prêmio — e observações — ex.: afastamentos), e o
+    exceções do mês, férias regulares e licenças — saúde/prêmio — que
+    estejam em vigor nesse mês, e observações — ex.: afastamentos), e o
     espaço pautado restante para anotações manuscritas, com o fecho de
     data e assinatura do superior imediato — igual ao formulário
     original."""
@@ -515,7 +523,7 @@ def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) 
         anotacoes.append(
             Paragraph(f"<b>Feriados e exceções do mês:</b> {_truncar(texto_feriados, 400)}", styles["Campo"])
         )
-    if pessoa.periodo_ferias:
+    if pessoa.periodo_ferias and ferias_em_vigor(pessoa, config.mes, config.ano):
         anotacoes.append(Paragraph(f"<b>Férias Regulares</b> de {pessoa.periodo_ferias}", styles["Campo"]))
     for licenca in licencas_em_vigor(pessoa, config.mes, config.ano):
         anotacoes.append(Paragraph(f"<b>{licenca.rotulo}</b> de {licenca.periodo}", styles["Campo"]))
