@@ -300,6 +300,26 @@ class Aplicativo(ttk.Window):
             var.trace_add("write", self._ao_editar_campo_escola)
             return var
 
+        # Mês/Ano em cima, sozinho e bem visível — é o campo que mais
+        # muda (toda vez que se gera o livro de um mês novo), então fica
+        # separado da "Identificação da escola" (não muda quase nunca) e
+        # de "Período e assinatura" (UF/cidade/diretor, muda raramente),
+        # em vez de escondido no meio de campos que raramente mudam.
+        frame_mes = ttk.Labelframe(aba, text="Mês do Livro Ponto", padding=10)
+        frame_mes.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(frame_mes, text="Mês").pack(side="left", padx=(0, 8))
+        self.var_mes = tk.StringVar(value=MESES_CAP[0])
+        ttk.Combobox(
+            frame_mes, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
+        ).pack(side="left")
+        self.var_mes.trace_add("write", self._ao_editar_campo_escola)
+
+        ttk.Label(frame_mes, text="Ano").pack(side="left", padx=(16, 8))
+        self.var_ano = tk.StringVar()
+        ttk.Spinbox(frame_mes, from_=2000, to=2100, textvariable=self.var_ano, width=8).pack(side="left")
+        self.var_ano.trace_add("write", self._ao_editar_campo_escola)
+
         # Dois grupos visuais (Labelframe) em vez de um formulário corrido
         # só — deixa mais fácil separar "quem é a escola" de "o que muda
         # todo mês/livro".
@@ -322,35 +342,21 @@ class Aplicativo(ttk.Window):
         frame_periodo.columnconfigure(1, weight=1)
         frame_periodo.columnconfigure(3, weight=1)
 
-        ttk.Label(frame_periodo, text="Mês").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=4)
-        self.var_mes = tk.StringVar(value=MESES_CAP[0])
-        ttk.Combobox(
-            frame_periodo, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
-        ).grid(row=0, column=1, sticky="w", pady=4)
-        self.var_mes.trace_add("write", self._ao_editar_campo_escola)
-
-        ttk.Label(frame_periodo, text="Ano").grid(row=0, column=2, sticky="e", padx=(12, 8), pady=4)
-        self.var_ano = tk.StringVar()
-        ttk.Spinbox(frame_periodo, from_=2000, to=2100, textvariable=self.var_ano, width=8).grid(
-            row=0, column=3, sticky="w", pady=4
-        )
-        self.var_ano.trace_add("write", self._ao_editar_campo_escola)
-
-        self.var_uf = campo(frame_periodo, 1, 0, "UF (feriados)", 6)
-        self.var_cidade = campo(frame_periodo, 1, 2, "Cidade (assinatura dos termos)", 24)
+        self.var_uf = campo(frame_periodo, 0, 0, "UF (feriados)", 6)
+        self.var_cidade = campo(frame_periodo, 0, 2, "Cidade (assinatura dos termos)", 24)
 
         self.var_diretor = campo(
-            frame_periodo, 2, 0, "Nome do Diretor(a) (assinatura dos termos)", 60, columnspan=3
+            frame_periodo, 1, 0, "Nome do Diretor(a) (assinatura dos termos)", 60, columnspan=3
         )
 
         self.var_rotulo_assinatura = campo(
-            frame_periodo, 3, 0, "Rótulo da assinatura (padrão: Direção da Unidade Escolar)", 60, columnspan=3
+            frame_periodo, 2, 0, "Rótulo da assinatura (padrão: Direção da Unidade Escolar)", 60, columnspan=3
         )
         ttk.Label(
             frame_periodo,
             text="(deixe em branco para escola; use algo como \"Dirigente Regional de Ensino\" pra uma URE)",
             foreground="grey",
-        ).grid(row=4, column=0, columnspan=4, sticky="w")
+        ).grid(row=3, column=0, columnspan=4, sticky="w")
 
     def _construir_aba_pessoas_tipo(self, aba: ttk.Frame, tipo: TipoServidor) -> ttk.Treeview:
         """Monta uma aba de cadastro (Treeview + Adicionar/Editar/Remover)
