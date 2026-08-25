@@ -52,10 +52,29 @@ def _linha(frame: tk.Widget, r: int, rotulo: str, largura: int = 32) -> tk.Strin
     return var
 
 
-def _aplicar_mascara_rg(var: tk.StringVar) -> None:
+def _aplicar_mascara_rg(entry: tk.Entry, var: tk.StringVar) -> None:
     """Formata o RG automaticamente enquanto é digitado, no padrão
     XX.XXX.XXX-X (ver `formatar_rg` em models.py — aceita letra, ex.:
-    "M1.234.567-8", RG comum em outros estados)."""
+    "M1.234.567-8", RG comum em outros estados).
+
+    Reposiciona o cursor depois de formatar. Duas pegadinhas de Tk aqui:
+
+    1. Só trocar o texto (via `var.set`) não move o cursor — ele fica no
+       mesmo índice numérico de antes, que passa a apontar pra um lugar
+       errado assim que um ponto/traço é inserido antes dele (ex.: ao
+       digitar o 3º dígito, "123" vira "12.3" — sem reposicionar, o
+       cursor fica parado bem antes do dígito recém-digitado, como se
+       tivesse "voltado uma casa"). Reposiciona contando quantos
+       caracteres do RG em si (sem pontuação) tinha antes do cursor, e
+       colocando o cursor depois da mesma quantidade no texto formatado.
+
+    2. `var.set(...)` só atualiza o texto exibido pelo Entry de forma
+       assíncrona (num evento futuro) — chamar `entry.icursor(...)` logo
+       em seguida ainda vê o texto antigo (mais curto) e o índice acaba
+       cortado de volta pro tamanho antigo. Editando o próprio widget
+       (`delete`+`insert`) em vez da variável, a atualização é imediata
+       (e ainda propaga pra variável do mesmo jeito), então o
+       `icursor(...)` seguinte funciona."""
     formatando = False
 
     def _ao_digitar(*_args: object) -> None:
@@ -64,12 +83,28 @@ def _aplicar_mascara_rg(var: tk.StringVar) -> None:
             return
         bruto = var.get()
         formatado = formatar_rg(bruto)
-        if formatado != bruto:
-            formatando = True
-            try:
-                var.set(formatado)
-            finally:
-                formatando = False
+        if formatado == bruto:
+            return
+        try:
+            pos_cursor = entry.index("insert")
+        except tk.TclError:
+            pos_cursor = len(bruto)
+        caracteres_antes = sum(1 for c in bruto[:pos_cursor] if c.isalnum())
+        formatando = True
+        try:
+            entry.delete(0, "end")
+            entry.insert(0, formatado)
+            nova_pos = len(formatado)
+            contados = 0
+            for i, c in enumerate(formatado):
+                if contados >= caracteres_antes:
+                    nova_pos = i
+                    break
+                if c.isalnum():
+                    contados += 1
+            entry.icursor(nova_pos)
+        finally:
+            formatando = False
 
     var.trace_add("write", _ao_digitar)
 
@@ -98,8 +133,11 @@ class DialogoPessoa(_DialogoBase):
 
         self.var_nome = _linha(corpo, r, "Nome")
         r += 1
-        self.var_rg = _linha(corpo, r, "RG")
-        _aplicar_mascara_rg(self.var_rg)
+        ttk.Label(corpo, text="RG").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
+        self.var_rg = tk.StringVar()
+        self.entry_rg = ttk.Entry(corpo, textvariable=self.var_rg, width=32)
+        self.entry_rg.grid(row=r, column=1, sticky="we", pady=3)
+        _aplicar_mascara_rg(self.entry_rg, self.var_rg)
         r += 1
         ttk.Label(corpo, text="Cargo/Função").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
         self.var_cargo = tk.StringVar()

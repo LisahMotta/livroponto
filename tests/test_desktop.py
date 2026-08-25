@@ -401,6 +401,24 @@ def test_dialogo_pessoa_formata_rg_automaticamente_ao_digitar(app, monkeypatch):
     assert dlg.var_rg.get() == "M1.234.567"
 
 
+def test_dialogo_pessoa_rg_nao_recua_cursor_ao_formatar(app, monkeypatch):
+    """Bug real: o cursor "voltava uma casa" ao digitar o RG. Trocar o
+    texto (`var.set`) pra inserir ponto/traço não move o cursor sozinho
+    — ele ficava no mesmo índice numérico de antes, que passava a
+    apontar pra antes do caractere recém-digitado assim que um separador
+    era inserido. Simula a digitação de verdade (caractere por
+    caractere, via o próprio Entry) e confere que o cursor sempre fica
+    logo depois do último caractere digitado."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    for ch in "123456789":
+        dlg.entry_rg.insert("insert", ch)
+        assert dlg.entry_rg.index("insert") == len(dlg.var_rg.get())
+
+    assert dlg.var_rg.get() == "12.345.678-9"
+
+
 def test_lista_de_pessoas_mostra_rg_formatado_mesmo_cadastrado_sem_pontuacao(app):
     app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano", rg="123456789"))
     app._atualizar_listas_pessoas()
