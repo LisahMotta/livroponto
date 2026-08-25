@@ -1081,8 +1081,16 @@ class Aplicativo(ttk.Window):
         sel = self._tree_do_tipo(tipo).selection()
         return int(sel[0]) if sel else None
 
+    def _cargos_cadastrados(self) -> list[str]:
+        """Cargos/funções já digitados pra algum servidor do cadastro —
+        entram como sugestão extra no combo de Cargo/Função, além da
+        lista fixa, pra não precisar redigitar sempre o mesmo cargo
+        pouco comum (a lista já fica salva no próprio cadastro, junto
+        com cada Pessoa — não precisa de nenhum armazenamento à parte)."""
+        return sorted({p.cargo.strip() for p in self.dados.pessoas if p.cargo.strip()})
+
     def _adicionar_pessoa_tipo(self, tipo: TipoServidor) -> None:
-        dlg = DialogoPessoa(self, tipo_inicial=tipo)
+        dlg = DialogoPessoa(self, tipo_inicial=tipo, cargos_extras=self._cargos_cadastrados())
         if dlg.resultado:
             self.dados.pessoas.append(dlg.resultado)
             self._atualizar_listas_pessoas()
@@ -1094,7 +1102,7 @@ class Aplicativo(ttk.Window):
         if idx is None:
             messagebox.showinfo("Selecione um servidor", "Clique numa linha da tabela primeiro.", parent=self)
             return
-        dlg = DialogoPessoa(self, self.dados.pessoas[idx])
+        dlg = DialogoPessoa(self, self.dados.pessoas[idx], cargos_extras=self._cargos_cadastrados())
         if dlg.resultado:
             self.dados.pessoas[idx] = dlg.resultado
             # o tipo pode ter mudado no diálogo (ex.: promovido a Gestão) —

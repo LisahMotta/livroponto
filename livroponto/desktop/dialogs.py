@@ -110,7 +110,19 @@ def _aplicar_mascara_rg(entry: tk.Entry, var: tk.StringVar) -> None:
 
 
 class DialogoPessoa(_DialogoBase):
-    def __init__(self, parent: tk.Widget, pessoa: Pessoa | None = None, tipo_inicial: TipoServidor | None = None):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        pessoa: Pessoa | None = None,
+        tipo_inicial: TipoServidor | None = None,
+        cargos_extras: list[str] | None = None,
+    ):
+        """`cargos_extras` — cargos já digitados antes por algum outro
+        servidor (fora da lista fixa `CARGOS_SUGERIDOS`) — entram na
+        caixa de sugestão também, pra não precisar redigitar sempre o
+        mesmo cargo pouco comum (comum em UREs, com nomenclatura
+        própria). Quem monta essa lista é o app (a partir do cadastro
+        já salvo), não este diálogo."""
         super().__init__(parent, "Editar servidor" if pessoa else "Adicionar servidor")
 
         corpo = ttk.Frame(self, padding=12)
@@ -141,7 +153,11 @@ class DialogoPessoa(_DialogoBase):
         r += 1
         ttk.Label(corpo, text="Cargo/Função").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
         self.var_cargo = tk.StringVar()
-        self.combo_cargo = ttk.Combobox(corpo, textvariable=self.var_cargo, values=CARGOS_SUGERIDOS, width=30)
+        cargos = list(CARGOS_SUGERIDOS)
+        for extra in cargos_extras or []:
+            if extra and extra not in cargos:
+                cargos.append(extra)
+        self.combo_cargo = ttk.Combobox(corpo, textvariable=self.var_cargo, values=cargos, width=30)
         self.combo_cargo.grid(row=r, column=1, sticky="we", pady=3)
         ttk.Label(corpo, text="(escolha ou digite o cargo/função)", foreground="grey").grid(
             row=r, column=2, columnspan=2, sticky="w", padx=(12, 0)

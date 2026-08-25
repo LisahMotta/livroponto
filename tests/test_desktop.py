@@ -743,6 +743,36 @@ def test_dialogo_pessoa_cargo_sugere_gestao_e_administrativo_mas_aceita_texto_li
     assert dlg.var_cargo.get() == "Dirigente Regional de Ensino"
 
 
+def test_cargo_digitado_pela_primeira_vez_passa_a_ser_sugerido_depois(app, monkeypatch):
+    """Pedido do usuário: um cargo digitado que não estava na lista
+    passa a ser sugerido também, sem precisar redigitar sempre o
+    mesmo. O app monta essa lista extra a partir do cadastro
+    (_cargos_cadastrados) e repassa pro diálogo — é isso que
+    _adicionar_pessoa_tipo/_editar_pessoa_selecionada_tipo fazem de
+    verdade."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    def _abrir_dialogo_pessoa():
+        return DialogoPessoa(app, cargos_extras=app._cargos_cadastrados())
+
+    assert "Cargo Bem Específico" not in _abrir_dialogo_pessoa().combo_cargo.cget("values")
+
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano", cargo="Cargo Bem Específico"))
+
+    valores = _abrir_dialogo_pessoa().combo_cargo.cget("values")
+    assert "Cargo Bem Específico" in valores
+    # os cargos fixos continuam sugeridos também, não somem
+    assert "Diretor(a) de Escola" in valores
+
+
+def test_cargos_cadastrados_nao_duplica_nem_repete_cargo_ja_na_lista_fixa(app):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano", cargo="Diretor(a) de Escola"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Beltrano", cargo="Cargo Novo"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Sem Cargo", cargo=""))
+
+    assert app._cargos_cadastrados() == ["Cargo Novo", "Diretor(a) de Escola"]
+
+
 def test_dialogo_pessoa_formata_rg_automaticamente_ao_digitar(app, monkeypatch):
     """Pedido do usuário: o campo RG do cadastro formata sozinho no
     padrão XX.XXX.XXX-X conforme os números (ou letra, em RG de outro
@@ -889,9 +919,9 @@ def test_botao_adicionar_da_aba_gestao_abre_dialogo_ja_no_tipo_gestao(app, monke
     capturado = {}
 
     class DialogoPessoaEspiao(DialogoPessoa):
-        def __init__(self, parent, pessoa=None, tipo_inicial=None):
+        def __init__(self, parent, pessoa=None, tipo_inicial=None, cargos_extras=None):
             capturado["tipo_inicial"] = tipo_inicial
-            super().__init__(parent, pessoa, tipo_inicial)
+            super().__init__(parent, pessoa, tipo_inicial, cargos_extras)
             self._cancelar()
 
     monkeypatch.setattr("livroponto.desktop.app.DialogoPessoa", DialogoPessoaEspiao)
