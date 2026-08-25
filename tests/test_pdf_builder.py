@@ -1,4 +1,4 @@
-from reportlab.platypus import Paragraph
+from reportlab.platypus import KeepTogether, Paragraph, Table
 
 from livroponto.calendario import montar_calendario
 from livroponto.models import Escola, Licenca, LivroPontoConfig, Pessoa, TipoServidor, chave_ordenacao_rg
@@ -166,9 +166,9 @@ def test_gerar_pdf_so_administrativo_ainda_assina_com_diretor_do_campo(tmp_path,
     configs_vistos = []
     original = builder_mod._bloco_tipo
 
-    def _bloco_tipo_espiao(config_recebido, tipo, dias, styles):
+    def _bloco_tipo_espiao(config_recebido, tipo, dias, styles, **kwargs):
         configs_vistos.append((tipo, config_recebido))
-        return original(config_recebido, tipo, dias, styles)
+        return original(config_recebido, tipo, dias, styles, **kwargs)
 
     monkeypatch.setattr(builder_mod, "_bloco_tipo", _bloco_tipo_espiao)
 
@@ -279,22 +279,33 @@ def test_licenca_rotulo_e_periodo():
     assert premio.periodo == ""
 
 
-def test_secao_financeira_nao_preenche_ferias_mesmo_cadastrada():
-    """Pedido do usuário: as férias saem só no verso (Consolidação) do
-    mês em que efetivamente caem — o rodapé "INFORMAÇÕES FINANCEIRAS" da
-    frente fica sempre em branco, igual ao formulário original."""
+def test_secao_financeira_preenche_ferias_em_vigor_no_mes_selecionado():
     pessoa = Pessoa(
         nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/04/2026", ferias_fim="02/05/2026"
     )
-    tabela = _secao_financeira(pessoa, _styles())
+    tabela = _secao_financeira(pessoa, _styles(), mes=4, ano=2026)
+    linha_ferias = tabela._cellvalues[1][1]
+    assert "03/04/2026" in linha_ferias.text
+    assert "02/05/2026" in linha_ferias.text
+
+
+def test_secao_financeira_nao_preenche_ferias_fora_do_mes_do_livro():
+    """Pedido do usuário: as férias só saem preenchidas no campo
+    FÉRIAS/anotadas no verso do(s) mês(es) em que efetivamente caem —
+    um livro de outro mês mantém o campo em branco, igual ao formulário
+    original."""
+    pessoa = Pessoa(
+        nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO, ferias_inicio="03/07/2026", ferias_fim="02/08/2026"
+    )
+    tabela = _secao_financeira(pessoa, _styles(), mes=4, ano=2026)
     linha_ferias = tabela._cellvalues[1][1]
     assert "___/___/___" in linha_ferias.text
-    assert "03/04/2026" not in linha_ferias.text
+    assert "03/07/2026" not in linha_ferias.text
 
 
 def test_secao_financeira_sem_ferias_cadastradas_fica_em_branco():
     pessoa = Pessoa(nome="Fulano", tipo=TipoServidor.ADMINISTRATIVO)
-    tabela = _secao_financeira(pessoa, _styles())
+    tabela = _secao_financeira(pessoa, _styles(), mes=4, ano=2026)
     linha_ferias = tabela._cellvalues[1][1]
     assert "___/___/___" in linha_ferias.text
 
@@ -394,6 +405,66 @@ def test_folha_consolidacao_sem_licenca_em_vigor_nao_anota_nada():
     elementos = _folha_consolidacao(config, pessoa, [], _styles())
     textos = _textos(elementos)
     assert not any("Licença" in t for t in textos)
+
+
+def test_bloco_tipo_sem_termos_nao_inclui_paragrafo_de_termo():
+    """Pedido do usuário: o botão principal "Gerar Livro Ponto" não inclui
+    mais os termos de abertura/encerramento — só as folhas, pra poder
+    imprimir frente e verso (os termos têm aba própria, "Termos")."""
+    config = _config_exemplo()
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf)
+    elementos = _bloco_tipo(config, TipoServidor.ADMINISTRATIVO, dias, _styles(), incluir_termos=False)
+    assert not any("LIVRO PONTO" in t for t in _textos(elementos))
+    assert any(isinstance(e, Table) for e in elementos)
+
+
+def test_bloco_tipo_imprimir_apenas_folha_nao_inclui_consolidacao():
+    config = _config_exemplo()
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf)
+    elementos = _bloco_tipo(
+        config,
+        TipoServidor.ADMINISTRATIVO,
+        dias,
+        _styles(),
+        incluir_termos=False,
+        imprimir_folha=True,
+        imprimir_consolidacao=False,
+    )
+    assert any(isinstance(e, Table) for e in elementos)
+    assert not any(isinstance(e, KeepTogether) for e in elementos)
+
+
+def test_bloco_tipo_imprimir_apenas_consolidacao_nao_inclui_folha():
+    config = _config_exemplo()
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf)
+    elementos = _bloco_tipo(
+        config,
+        TipoServidor.ADMINISTRATIVO,
+        dias,
+        _styles(),
+        incluir_termos=False,
+        imprimir_folha=False,
+        imprimir_consolidacao=True,
+    )
+    assert any(isinstance(e, KeepTogether) for e in elementos)
+    assert not any(isinstance(e, Table) for e in elementos)
+
+
+def test_gerar_pdf_sem_folha_nem_consolidacao_lanca_erro(tmp_path):
+    import pytest
+
+    config = _config_exemplo()
+    with pytest.raises(ValueError):
+        gerar_pdf(config, tmp_path / "vazio.pdf", imprimir_folha=False, imprimir_consolidacao=False)
+
+
+def test_gerar_pdf_sem_termos_gera_arquivo(tmp_path):
+    """Fluxo do botão "Gerar Livro Ponto" do app desktop: sem termos,
+    só as folhas."""
+    caminho = tmp_path / "livro_ponto.pdf"
+    resultado = gerar_pdf(_config_exemplo(), caminho, incluir_termos=False)
+    assert resultado.exists()
+    assert resultado.stat().st_size > 1000
 
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():

@@ -95,35 +95,70 @@ class Aplicativo(ttk.Window):
     # Construção da interface
     # ------------------------------------------------------------------
     def _construir_barra_ferramentas(self) -> None:
-        barra = ttk.Frame(self, padding=(8, 8, 8, 0))
-        barra.pack(fill="x")
-        ttk.Button(barra, text="Novo", command=self._novo, bootstyle="secondary-outline").pack(side="left")
-        ttk.Button(barra, text="Abrir...", command=self._abrir, bootstyle="secondary-outline").pack(
-            side="left", padx=6
+        barra_arquivo = ttk.Frame(self, padding=(8, 8, 8, 4))
+        barra_arquivo.pack(fill="x")
+        ttk.Button(barra_arquivo, text="Novo", command=self._novo, bootstyle="secondary-outline").pack(
+            side="left"
         )
         ttk.Button(
-            barra, text="Salvar cadastro...", command=self._salvar_cadastro, bootstyle="secondary-outline"
-        ).pack(side="left")
-        ttk.Separator(barra, orient="vertical").pack(side="left", fill="y", padx=10)
+            barra_arquivo, text="Abrir...", command=self._abrir, bootstyle="secondary-outline"
+        ).pack(side="left", padx=6)
         ttk.Button(
-            barra, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf, bootstyle="success"
+            barra_arquivo, text="Salvar cadastro...", command=self._salvar_cadastro, bootstyle="secondary-outline"
         ).pack(side="left")
-        ttk.Label(barra, text="Incluir:").pack(side="left", padx=(10, 2))
+
+        barra_gerar = ttk.Frame(self, padding=(8, 0, 8, 4))
+        barra_gerar.pack(fill="x")
+        ttk.Button(
+            barra_gerar, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf, bootstyle="success"
+        ).pack(side="left")
+
+        ttk.Label(barra_gerar, text="Imprimir:").pack(side="left", padx=(12, 2))
+        self.var_imprimir_folha = tk.BooleanVar(value=True)
+        self.var_imprimir_consolidacao = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            barra_gerar, text="Folha", variable=self.var_imprimir_folha, bootstyle="round-toggle"
+        ).pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(
+            barra_gerar,
+            text="Consolidação (verso)",
+            variable=self.var_imprimir_consolidacao,
+            bootstyle="round-toggle",
+        ).pack(side="left")
+
+        # Linha própria pra "Incluir" (em vez de dividir a mesma linha com
+        # "Imprimir") — evita que o texto dos toggles seja cortado em
+        # janelas mais estreitas.
+        barra_incluir = ttk.Frame(self, padding=(8, 0, 8, 4))
+        barra_incluir.pack(fill="x")
+        ttk.Label(barra_incluir, text="Incluir:").pack(side="left", padx=(0, 2))
         self.var_incluir_administrativos = tk.BooleanVar(value=True)
         self.var_incluir_docentes = tk.BooleanVar(value=True)
         self.var_incluir_gestao = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            barra,
+            barra_incluir,
             text="Administrativos",
             variable=self.var_incluir_administrativos,
             bootstyle="round-toggle",
         ).pack(side="left", padx=(0, 10))
         ttk.Checkbutton(
-            barra, text="Docentes", variable=self.var_incluir_docentes, bootstyle="round-toggle"
+            barra_incluir, text="Docentes", variable=self.var_incluir_docentes, bootstyle="round-toggle"
         ).pack(side="left", padx=(0, 10))
         ttk.Checkbutton(
-            barra, text="Trio gestor", variable=self.var_incluir_gestao, bootstyle="round-toggle"
+            barra_incluir, text="Trio gestor", variable=self.var_incluir_gestao, bootstyle="round-toggle"
         ).pack(side="left")
+
+        ttk.Label(
+            self,
+            text=(
+                "Gera só as folhas de ponto/frequência, frente e verso — desmarque "
+                "Folha ou Consolidação pra imprimir cada lado em uma passada "
+                "separada na impressora. Os termos de abertura/encerramento têm "
+                "aba própria (Termos)."
+            ),
+            wraplength=920,
+            foreground="grey",
+        ).pack(fill="x", padx=8, pady=(0, 4))
 
     def _construir_abas(self) -> None:
         notebook = ttk.Notebook(self)
@@ -226,8 +261,8 @@ class Aplicativo(ttk.Window):
             bootstyle="danger-outline",
         ).pack(side="left")
         ttk.Label(
-            barra, text="  (duplo-clique numa linha também edita)", foreground="grey"
-        ).pack(side="left")
+            barra, text="(duplo-clique numa linha também edita)", foreground="grey"
+        ).pack(side="left", padx=(8, 0))
 
         colunas = ("nome", "rg", "cargo", "jornada", "ponto", "observacoes")
         titulos = {
@@ -307,7 +342,9 @@ class Aplicativo(ttk.Window):
         ttk.Button(
             barra, text="Editar período de férias", command=self._editar_ferias_selecionada, bootstyle="primary"
         ).pack(side="left")
-        ttk.Label(barra, text="  (duplo-clique numa linha também edita)", foreground="grey").pack(side="left")
+        ttk.Label(barra, text="(duplo-clique numa linha também edita)", foreground="grey").pack(
+            side="left", padx=(8, 0)
+        )
 
         colunas = ("nome", "tipo", "rg", "ferias_inicio", "ferias_fim")
         titulos = {
@@ -364,7 +401,9 @@ class Aplicativo(ttk.Window):
         ttk.Button(
             barra, text="Remover", command=self._remover_licenca_selecionada, bootstyle="danger-outline"
         ).pack(side="left", padx=6)
-        ttk.Label(barra, text="  (duplo-clique numa linha também edita)", foreground="grey").pack(side="left")
+        ttk.Label(barra, text="(duplo-clique numa linha também edita)", foreground="grey").pack(
+            side="left", padx=(8, 0)
+        )
 
         colunas = ("nome", "tipo", "inicio", "fim")
         titulos = {"nome": "Nome", "tipo": "Tipo", "inicio": "De", "fim": "Até"}
@@ -564,6 +603,16 @@ class Aplicativo(ttk.Window):
             )
             return
 
+        imprimir_folha = self.var_imprimir_folha.get()
+        imprimir_consolidacao = self.var_imprimir_consolidacao.get()
+        if not imprimir_folha and not imprimir_consolidacao:
+            messagebox.showwarning(
+                "Nada para gerar",
+                "Marque ao menos um em \"Imprimir\": Folha e/ou Consolidação (verso).",
+                parent=self,
+            )
+            return
+
         sufixo = "_".join(s for t, s in _SUFIXO_ARQUIVO_TIPO if t in tipos_incluidos)
         base = f"livro_ponto_{sufixo}" if sufixo else "livro_ponto"
         nome_sugerido = f"{base}_{self.dados.mes:02d}_{self.dados.ano}.pdf"
@@ -576,7 +625,18 @@ class Aplicativo(ttk.Window):
         if not caminho:
             return
         try:
-            gerar_pdf(self.dados, caminho, tipos_incluidos=tipos_incluidos)
+            # O botão "Gerar Livro Ponto" não inclui mais os termos de
+            # abertura/encerramento — eles têm aba própria (Termos). Folha
+            # e Consolidação são opcionais, pra imprimir frente e verso em
+            # duas passadas separadas na impressora.
+            gerar_pdf(
+                self.dados,
+                caminho,
+                tipos_incluidos=tipos_incluidos,
+                incluir_termos=False,
+                imprimir_folha=imprimir_folha,
+                imprimir_consolidacao=imprimir_consolidacao,
+            )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Erro ao gerar PDF", str(exc), parent=self)
             return

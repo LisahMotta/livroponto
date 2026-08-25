@@ -223,7 +223,9 @@ def test_gerar_pdf_pelo_botao_respeita_filtro_incluir(app, tmp_path, monkeypatch
         app.dados, pessoas=[p for p in app.dados.pessoas if p.tipo == TipoServidor.ADMINISTRATIVO]
     )
     caminho_referencia = tmp_path / "referencia.pdf"
-    gerar_pdf_direto(config_admin_only, caminho_referencia)
+    # O botão não inclui mais os termos (aba própria) — a referência
+    # precisa da mesma opção pra a comparação de tamanho fazer sentido.
+    gerar_pdf_direto(config_admin_only, caminho_referencia, incluir_termos=False)
     # o PDF gerado pelo botão deve ter tamanho parecido ao gerado só com o
     # administrativo (bem menor do que se tivesse incluído o docente também)
     assert abs(caminho.stat().st_size - caminho_referencia.stat().st_size) < 500
@@ -296,6 +298,57 @@ def test_checkboxes_incluir_existem_e_comecam_marcados(app):
     assert app.var_incluir_gestao.get() is True
 
 
+def test_checkboxes_imprimir_existem_e_comecam_marcados(app):
+    assert app.var_imprimir_folha.get() is True
+    assert app.var_imprimir_consolidacao.get() is True
+
+
+def test_gerar_pdf_pelo_botao_nunca_inclui_termos_e_repassa_opcoes_de_impressao(app, monkeypatch):
+    """Pedido do usuário: o botão "Gerar Livro Ponto" não inclui mais os
+    termos de abertura/encerramento (aba própria, Termos) — e repassa as
+    opções de Imprimir Folha/Consolidação pro gerador de PDF."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_imprimir_folha.set(True)
+    app.var_imprimir_consolidacao.set(False)
+
+    chamadas = []
+
+    def _gerar_pdf_espiao(config, caminho, **kwargs):
+        chamadas.append(kwargs)
+        return caminho
+
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "gerar_pdf", _gerar_pdf_espiao)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert len(chamadas) == 1
+    assert chamadas[0]["incluir_termos"] is False
+    assert chamadas[0]["imprimir_folha"] is True
+    assert chamadas[0]["imprimir_consolidacao"] is False
+
+
+def test_gerar_pdf_pelo_botao_avisa_se_nenhuma_opcao_de_impressao_marcada(app, monkeypatch):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.var_nome.set("EE Exemplo Fictício")
+    app.var_imprimir_folha.set(False)
+    app.var_imprimir_consolidacao.set(False)
+
+    avisos = []
+    monkeypatch.setattr(messagebox, "showwarning", lambda titulo, msg, **k: avisos.append(msg))
+    chamou_salvar = []
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: chamou_salvar.append(1) or "saida.pdf")
+
+    app._gerar_pdf()
+
+    assert avisos  # avisou em vez de tentar gerar
+    assert not chamou_salvar
+
+
 def test_gerar_pdf_pelo_botao_inclui_trio_gestor(app, tmp_path, monkeypatch):
     """O botão "Gerar Livro Ponto" também gera a folha do trio gestor
     quando há gente cadastrada com tipo GESTAO e "Trio gestor" marcado
@@ -314,6 +367,24 @@ def test_gerar_pdf_pelo_botao_inclui_trio_gestor(app, tmp_path, monkeypatch):
 
     assert caminho.exists()
     assert caminho.stat().st_size > 1000
+
+
+def test_dialogo_pessoa_cargo_sugere_gestao_e_administrativo_mas_aceita_texto_livre(app, monkeypatch):
+    """Pedido do usuário: a caixa de cargo/função sugere os cargos do
+    trio gestor e os administrativos mais comuns, mas continua editável
+    — as URES usam nomenclaturas diferentes das escolas."""
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    valores = dlg.combo_cargo.cget("values")
+    assert "Diretor(a) de Escola" in valores
+    assert "Agente de Organização Escolar" in valores
+    assert "Secretário de Escola" in valores
+    assert "Gerente de Organização Escolar" in valores
+    assert str(dlg.combo_cargo.cget("state")) != "readonly"
+
+    dlg.var_cargo.set("Dirigente Regional de Ensino")  # nomenclatura de URE, fora da lista
+    assert dlg.var_cargo.get() == "Dirigente Regional de Ensino"
 
 
 def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):

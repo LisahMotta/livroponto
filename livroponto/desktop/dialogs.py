@@ -11,12 +11,17 @@ from ..models import TIPOS_LICENCA, DiaNaoLetivo, Licenca, Pessoa, TipoServidor
 
 TIPOS_PESSOA = ["ADMINISTRATIVO", "DOCENTE", "GESTAO"]
 TIPOS_EXCECAO = ["FERIADO", "RECESSO", "PONTO_FACULTATIVO", "SUSPENSAO", "LETIVO"]
-# Trio gestor — sugestões de Cargo/Função quando Tipo = GESTAO (o campo
-# continua livre, aceita qualquer texto).
-CARGOS_GESTAO = [
+# Sugestões de Cargo/Função — trio gestor e cargos administrativos mais
+# comuns. O campo continua livre (Combobox editável, não travado nessa
+# lista): as URES usam nomenclaturas diferentes das escolas, então dá
+# pra digitar qualquer outro cargo/função sem estar nessa lista.
+CARGOS_SUGERIDOS = [
     "Diretor(a) de Escola",
     "Vice-Diretor(a) de Escola",
     "Coordenador de Gestão Pedagógica",
+    "Agente de Organização Escolar",
+    "Secretário de Escola",
+    "Gerente de Organização Escolar",
 ]
 
 
@@ -75,10 +80,9 @@ class DialogoPessoa(_DialogoBase):
         r += 1
         ttk.Label(corpo, text="Cargo/Função").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
         self.var_cargo = tk.StringVar()
-        ttk.Combobox(corpo, textvariable=self.var_cargo, values=CARGOS_GESTAO, width=30).grid(
-            row=r, column=1, sticky="we", pady=3
-        )
-        ttk.Label(corpo, text="(trio gestor: escolha ou digite o cargo)", foreground="grey").grid(
+        self.combo_cargo = ttk.Combobox(corpo, textvariable=self.var_cargo, values=CARGOS_SUGERIDOS, width=30)
+        self.combo_cargo.grid(row=r, column=1, sticky="we", pady=3)
+        ttk.Label(corpo, text="(escolha ou digite o cargo/função)", foreground="grey").grid(
             row=r, column=2, columnspan=2, sticky="w", padx=(12, 0)
         )
         r += 1

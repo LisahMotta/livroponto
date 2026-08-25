@@ -385,16 +385,21 @@ def _texto_feriados_excecoes(dias, mes: int) -> str:
     return "; ".join(itens)
 
 
-def _secao_financeira(pessoa: Pessoa, styles) -> Table:
+def _secao_financeira(pessoa: Pessoa, styles, mes: int, ano: int) -> Table:
     """Rodapé "INFORMAÇÕES FINANCEIRAS" (férias, GTN, ACA, serviço
-    extraordinário, substituição eventual, vale transporte) — todos os
-    campos em branco para preenchimento manual, igual ao formulário
-    original. O período de férias cadastrado na aba Férias não sai aqui:
-    ele só é impresso automaticamente no verso (Consolidação) do mês em
-    que efetivamente cai (ver `_folha_consolidacao`)."""
+    extraordinário, substituição eventual, vale transporte). O período de
+    férias cadastrado na aba Férias só sai preenchido aqui (e anotado no
+    verso — ver `_folha_consolidacao`) no(s) mês(es) em que efetivamente
+    cai; fora disso, ou sem férias cadastrada, o campo fica em branco
+    para preenchimento manual, igual aos demais campos do formulário
+    original."""
     P = lambda t: Paragraph(t, styles["CelTabelaPequena"])  # noqa: E731
-    ferias_de = "___/___/___"
-    ferias_ate = "___/___/___"
+    if pessoa.periodo_ferias and ferias_em_vigor(pessoa, mes, ano):
+        ferias_de = pessoa.ferias_inicio
+        ferias_ate = pessoa.ferias_fim
+    else:
+        ferias_de = "___/___/___"
+        ferias_ate = "___/___/___"
     dados = [
         ["INFORMAÇÕES FINANCEIRAS", "", "", "", "", ""],
         [
@@ -485,7 +490,7 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
         [_cabecalho_formulario(config, styles, numero_pagina)],
         [_bloco_dados_pessoa(pessoa, styles)],
         [_tabela_dias(dias, styles)],
-        [_secao_financeira(pessoa, styles)],
+        [_secao_financeira(pessoa, styles, config.mes, config.ano)],
         [Spacer(1, 0.25 * cm)],
         [_rodape_assinaturas(styles)],
     ]
@@ -858,30 +863,56 @@ def _folha_frequencia_docente(
     return outer
 
 
-def _bloco_tipo(config: LivroPontoConfig, tipo: TipoServidor, dias, styles) -> list:
+def _bloco_tipo(
+    config: LivroPontoConfig,
+    tipo: TipoServidor,
+    dias,
+    styles,
+    incluir_termos: bool = True,
+    imprimir_folha: bool = True,
+    imprimir_consolidacao: bool = True,
+) -> list:
+    """`imprimir_folha`/`imprimir_consolidacao` escolhem se a frente
+    (folha de ponto/frequência) e o verso (consolidação) de fato entram
+    no PDF — pensado pra imprimir frente e verso em duas passadas
+    manuais na impressora. O docente não tem verso de consolidação
+    separado (o resumo já vem embutido na própria folha de frequência),
+    então pra ele só `imprimir_folha` faz diferença."""
     # Páginas em ordem de número de RG (não a ordem do cadastro).
     pessoas = sorted(config.pessoas_por_tipo(tipo), key=chave_ordenacao_rg)
     if not pessoas:
         return []
 
     elementos: list = []
-    elementos += _termo(config, tipo, encerramento=False, styles=styles)
-    elementos.append(PageBreak())
+    if incluir_termos:
+        elementos += _termo(config, tipo, encerramento=False, styles=styles)
+        elementos.append(PageBreak())
 
     # Só as páginas com o nome do servidor (folha de ponto / folha de
     # frequência) são numeradas em "PAG: ___" — o verso de consolidação não
-    # entra na numeração.
+    # entra na numeração. A numeração não muda conforme o que for
+    # selecionado pra imprimir, pra ficar sempre consistente com a
+    # posição de cada um no livro completo.
     for numero_pagina, pessoa in enumerate(pessoas, start=1):
+        pagina_teve_conteudo = False
         if tipo in _TIPOS_FOLHA_PONTO:
-            elementos.append(_folha_ponto(config, pessoa, dias, styles, numero_pagina))
-            elementos.append(PageBreak())
-            elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, dias, styles)))
-        else:
+            if imprimir_folha:
+                elementos.append(_folha_ponto(config, pessoa, dias, styles, numero_pagina))
+                pagina_teve_conteudo = True
+            if imprimir_consolidacao:
+                if pagina_teve_conteudo:
+                    elementos.append(PageBreak())
+                elementos.append(KeepTogether(_folha_consolidacao(config, pessoa, dias, styles)))
+                pagina_teve_conteudo = True
+        elif imprimir_folha:
             elementos.append(_folha_frequencia_docente(config, pessoa, dias, styles, numero_pagina))
-        elementos.append(PageBreak())
+            pagina_teve_conteudo = True
+        if pagina_teve_conteudo:
+            elementos.append(PageBreak())
 
-    elementos += _termo(config, tipo, encerramento=True, styles=styles)
-    elementos.append(PageBreak())
+    if incluir_termos:
+        elementos += _termo(config, tipo, encerramento=True, styles=styles)
+        elementos.append(PageBreak())
     return elementos
 
 
@@ -890,6 +921,9 @@ def gerar_pdf(
     caminho_saida: str | Path,
     uf: str | None = None,
     tipos_incluidos: set[TipoServidor] | None = None,
+    incluir_termos: bool = True,
+    imprimir_folha: bool = True,
+    imprimir_consolidacao: bool = True,
 ) -> Path:
     """Gera o PDF completo do Livro Ponto para o mês/ano de `config`.
 
@@ -898,10 +932,19 @@ def gerar_pdf(
 
     `tipos_incluidos` escolhe quais dos três livros (administrativo, gestão,
     docente) de fato ganham folhas — por padrão, os três.
+
+    `incluir_termos` escolhe se os termos de abertura/encerramento de
+    cada livro entram no PDF (o app desktop tem uma aba própria — Termos —
+    pra imprimi-los à parte, então o botão principal gera só as folhas).
+    `imprimir_folha`/`imprimir_consolidacao` escolhem se a frente e o
+    verso de cada folha entram — pensado pra imprimir frente e verso em
+    duas passadas manuais na impressora.
     """
     pessoas_com_ponto = [p for p in config.pessoas if p.ponto]
     if not pessoas_com_ponto:
         raise ValueError("Nenhuma pessoa com ponto habilitado para gerar o livro.")
+    if not imprimir_folha and not imprimir_consolidacao:
+        raise ValueError("Selecione ao menos uma opção: imprimir folha e/ou imprimir consolidação.")
     config = replace(config, pessoas=pessoas_com_ponto)
     if tipos_incluidos is None:
         tipos_incluidos = set(TipoServidor)
@@ -925,7 +968,18 @@ def gerar_pdf(
     elementos: list = []
     for tipo in (TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO, TipoServidor.DOCENTE):
         if tipo in tipos_incluidos:
-            elementos += _bloco_tipo(config, tipo, dias, styles)
+            elementos += _bloco_tipo(
+                config,
+                tipo,
+                dias,
+                styles,
+                incluir_termos=incluir_termos,
+                imprimir_folha=imprimir_folha,
+                imprimir_consolidacao=imprimir_consolidacao,
+            )
+
+    if not elementos:
+        raise ValueError("Nada para gerar com as opções selecionadas.")
 
     if elementos and isinstance(elementos[-1], PageBreak):
         elementos.pop()
