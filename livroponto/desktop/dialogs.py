@@ -194,6 +194,17 @@ class DialogoPessoa(_DialogoBase):
         ttk.Label(corpo, text="Intervalo até").grid(row=r, column=2, sticky="w", padx=(12, 8))
         ttk.Entry(corpo, textvariable=self.var_intervalo_fim, width=12).grid(row=r, column=3, sticky="w")
         r += 1
+        ttk.Label(corpo, text="Regime de Plantão").grid(row=r, column=0, sticky="w", padx=(0, 8), pady=3)
+        self.var_regime_plantao = tk.StringVar()
+        ttk.Combobox(
+            corpo, textvariable=self.var_regime_plantao, values=["", "Sim", "Não"], state="readonly", width=10
+        ).grid(row=r, column=1, sticky="w", pady=3)
+        ttk.Label(corpo, text="Horário de Estudante").grid(row=r, column=2, sticky="w", padx=(12, 8), pady=3)
+        self.var_horario_estudante = tk.StringVar()
+        ttk.Combobox(
+            corpo, textvariable=self.var_horario_estudante, values=["", "Sim", "Não"], state="readonly", width=10
+        ).grid(row=r, column=3, sticky="w", pady=3)
+        r += 1
         ttk.Label(
             corpo,
             text="(férias e licenças agora têm abas próprias — Férias / Licenças)",
@@ -248,6 +259,8 @@ class DialogoPessoa(_DialogoBase):
         self.var_saida.set(p.saida)
         self.var_intervalo_inicio.set(p.intervalo_inicio)
         self.var_intervalo_fim.set(p.intervalo_fim)
+        self.var_regime_plantao.set(p.regime_plantao)
+        self.var_horario_estudante.set(p.horario_estudante)
         self.var_disciplinas.set(p.disciplinas)
         self.var_categoria.set(p.categoria)
         self.var_situacao.set(p.situacao)
@@ -282,6 +295,8 @@ class DialogoPessoa(_DialogoBase):
             saida=self.var_saida.get().strip(),
             intervalo_inicio=self.var_intervalo_inicio.get().strip(),
             intervalo_fim=self.var_intervalo_fim.get().strip(),
+            regime_plantao=self.var_regime_plantao.get().strip(),
+            horario_estudante=self.var_horario_estudante.get().strip(),
             ferias_inicio=self._ferias_inicio_orig,
             ferias_fim=self._ferias_fim_orig,
             licencas=self._licencas_orig,

@@ -210,6 +210,21 @@ def test_bloco_dados_pessoa_imprime_rg_formatado_mesmo_sem_pontuacao_salva():
     assert "12.345.678-9" in tabela._cellvalues[0][1].text
 
 
+def test_bloco_dados_pessoa_imprime_regime_de_plantao_e_horario_de_estudante():
+    from livroponto.pdf.builder import _bloco_dados_pessoa
+
+    pessoa = Pessoa(
+        nome="Fulano",
+        tipo=TipoServidor.ADMINISTRATIVO,
+        regime_plantao="Sim",
+        horario_estudante="Não",
+    )
+    tabela = _bloco_dados_pessoa(pessoa, _styles())
+    linhas = [celula.text for linha in tabela._cellvalues for celula in linha if isinstance(celula, Paragraph)]
+    assert any("REGIME DE PLANTÃO:</b> Sim" in t for t in linhas)
+    assert any("HORÁRIO DE ESTUDANTE (SIM/NÃO):</b> Não" in t for t in linhas)
+
+
 def test_bloco_dados_docente_imprime_rg_formatado_com_letra():
     from livroponto.pdf.builder import _bloco_dados_docente
 

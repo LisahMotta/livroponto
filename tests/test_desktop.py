@@ -955,6 +955,31 @@ def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):
     assert dlg.resultado.jornada_semanal == 40.0
 
 
+def test_dialogo_pessoa_regime_plantao_e_horario_estudante_vao_pro_resultado(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    dlg = DialogoPessoa(app)
+    dlg.var_nome.set("Novo Servidor")
+    dlg.var_regime_plantao.set("Sim")
+    dlg.var_horario_estudante.set("Não")
+    dlg._salvar()
+
+    assert dlg.resultado.regime_plantao == "Sim"
+    assert dlg.resultado.horario_estudante == "Não"
+
+
+def test_dialogo_pessoa_edicao_preenche_regime_plantao_e_horario_estudante(app, monkeypatch):
+    monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
+
+    existente = _pessoa_exemplo(regime_plantao="Sim", horario_estudante="Sim")
+    dlg = DialogoPessoa(app, existente)
+
+    assert dlg.var_regime_plantao.get() == "Sim"
+    assert dlg.var_horario_estudante.get() == "Sim"
+
+    dlg._cancelar()
+
+
 def test_dialogo_pessoa_sem_nome_nao_gera_resultado(app, monkeypatch):
     monkeypatch.setattr(tk.Toplevel, "wait_window", lambda self, *a: self.update())
     monkeypatch.setattr("livroponto.desktop.dialogs.messagebox.showerror", lambda *a, **k: None)

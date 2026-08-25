@@ -81,6 +81,8 @@ class Pessoa:
     ferias_fim: str = ""
     licencas: list[Licenca] = field(default_factory=list)  # aba Licenças
     seq: Optional[int] = None
+    regime_plantao: str = ""  # "Sim" | "Não" | "" — aparece no cabeçalho da folha de ponto
+    horario_estudante: str = ""  # "Sim" | "Não" | "" — idem
 
     @property
     def horario_trabalho(self) -> str:

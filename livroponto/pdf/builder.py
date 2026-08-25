@@ -284,13 +284,16 @@ def _bloco_dados_pessoa(pessoa: Pessoa, styles) -> Table:
     if pessoa.tipo in _TIPOS_FOLHA_PONTO:
         jornada_txt = f"{pessoa.jornada_semanal:g} Horas" if pessoa.jornada_semanal else ""
         linhas.append(
-            [P(_linha_campo("JORNADA DE TRABALHO", jornada_txt)), P("<b>REGIME DE PLANTÃO:</b>")]
+            [
+                P(_linha_campo("JORNADA DE TRABALHO", jornada_txt)),
+                P(_linha_campo("REGIME DE PLANTÃO", pessoa.regime_plantao)),
+            ]
         )
         linhas.append([P(f"<b>HORÁRIO DE TRABALHO:</b> {pessoa.horario_trabalho}"), ""])
         linhas.append(
             [
                 P(f"<b>INTERVALO DE ALMOÇO E DESCANSO:</b> {pessoa.intervalo}"),
-                P("<b>HORÁRIO DE ESTUDANTE (SIM/NÃO):</b>"),
+                P(_linha_campo("HORÁRIO DE ESTUDANTE (SIM/NÃO)", pessoa.horario_estudante)),
             ]
         )
     else:

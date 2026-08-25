@@ -73,6 +73,31 @@ def test_salvar_modelo_e_ler_modelo_preservam_excecoes_e_jornada_codigo(tmp_path
     assert recarregado.dias_excecao[0].dia == 8
 
 
+def test_salvar_modelo_e_ler_modelo_preservam_regime_plantao_e_horario_estudante(tmp_path):
+    config = LivroPontoConfig(
+        escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
+        mes=7,
+        ano=2026,
+        pessoas=[
+            Pessoa(
+                nome="Servidor Fictício",
+                tipo=TipoServidor.ADMINISTRATIVO,
+                rg="1.111.111-1",
+                cargo="Agente de Organização Escolar",
+                regime_plantao="Sim",
+                horario_estudante="Não",
+            ),
+        ],
+    )
+
+    caminho = tmp_path / "modelo.xlsx"
+    salvar_modelo(config, caminho)
+    recarregado = ler_modelo(caminho)
+
+    assert recarregado.pessoas[0].regime_plantao == "Sim"
+    assert recarregado.pessoas[0].horario_estudante == "Não"
+
+
 def test_salvar_modelo_e_ler_modelo_preservam_trio_gestor(tmp_path):
     config = LivroPontoConfig(
         escola=Escola(nome="EE Exemplo Fictício", municipio="Cidade Exemplo"),
