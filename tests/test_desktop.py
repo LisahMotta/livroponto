@@ -4,6 +4,7 @@ display utilizável (defina DISPLAY, ou rode sob xvfb-run)."""
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -368,6 +369,27 @@ def test_clique_na_coluna_sel_marca_e_desmarca_servidor_para_impressao(app):
     app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
     assert id(pessoa) not in app._pessoas_selecionadas_impressao
     assert app.tree_administrativo.item("0", "values")[0] == "☐"
+
+
+def test_clique_na_coluna_sel_retorna_break_para_nao_trocar_a_linha_selecionada(app, monkeypatch):
+    """Bug real: sem retornar "break", clicar na marcação de impressão
+    também disparava o binding nativo do Treeview, trocando a linha
+    "selecionada" (a que Editar/Remover usam) — marcar alguém pra
+    impressão podia silenciosamente trocar quem seria editado ou
+    removido em seguida."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
+    app._atualizar_listas_pessoas()
+    tree = app.tree_administrativo
+    evento = SimpleNamespace(x=0, y=0)
+
+    monkeypatch.setattr(tree, "identify_region", lambda x, y: "cell")
+    monkeypatch.setattr(tree, "identify_row", lambda y: "0")
+
+    monkeypatch.setattr(tree, "identify_column", lambda x: "#1")  # coluna "Sel."
+    assert app._alternar_selecao_impressao(evento, tree) == "break"
+
+    monkeypatch.setattr(tree, "identify_column", lambda x: "#2")  # qualquer outra coluna
+    assert app._alternar_selecao_impressao(evento, tree) is None
 
 
 def test_remover_servidor_marcado_limpa_a_selecao_de_impressao(app):

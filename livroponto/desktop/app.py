@@ -771,14 +771,21 @@ class Aplicativo(ttk.Window):
                 ),
             )
 
-    def _alternar_selecao_impressao(self, event: tk.Event, tree: ttk.Treeview) -> None:
+    def _alternar_selecao_impressao(self, event: tk.Event, tree: ttk.Treeview) -> str | None:
         """Clique na coluna "Sel." de uma linha marca/desmarca aquele
-        servidor pra impressão avulsa (só a folha/consolidação dele)."""
+        servidor pra impressão avulsa (só a folha/consolidação dele).
+
+        Retorna "break" pra esse clique não continuar sendo processado
+        pelo binding nativo do Treeview — sem isso, clicar na marcação
+        também trocava a linha "selecionada" (a que Editar/Remover
+        usam), e marcar alguém pra impressão podia silenciosamente
+        trocar quem seria editado ou removido em seguida."""
         if tree.identify_region(event.x, event.y) != "cell" or tree.identify_column(event.x) != "#1":
-            return
+            return None
         linha = tree.identify_row(event.y)
         if linha:
             self._alternar_selecao_impressao_da_linha(tree, linha)
+        return "break"
 
     def _alternar_selecao_impressao_da_linha(self, tree: ttk.Treeview, linha: str) -> None:
         """A marcação/desmarcação em si (separada da resolução de qual
