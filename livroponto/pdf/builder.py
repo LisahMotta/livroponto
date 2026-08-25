@@ -344,7 +344,15 @@ def _tabela_dias(dias, styles) -> Table:
             dados.append([str(dia.dia), "", "", "", "", "", ""])
             continue
         sigla = _SIGLA_TIPO.get(dia.tipo, dia.tipo)
-        texto = f"{sigla} - {dia.rotulo}" if dia.rotulo and dia.rotulo != sigla else sigla
+        # Feriado sai só com a palavra "FERIADO" na folha — a descrição
+        # (ex.: "Sexta-feira Santa") fica só no verso, junto com "Vide
+        # verso" nessa mesma linha (ver abaixo), pra não repetir o texto
+        # nos dois lugares. Os demais tipos (recesso, ponto facultativo,
+        # suspensão) continuam com a descrição na própria folha.
+        if dia.tipo == "FERIADO":
+            texto = sigla
+        else:
+            texto = f"{sigla} - {dia.rotulo}" if dia.rotulo and dia.rotulo != sigla else sigla
         # Sábado/domingo/feriado (e demais exceções) mantêm as mesmas
         # colunas Entrada/Saída dos dias normais — só troca o preenchimento
         # manual pelo nome do dia em cada uma, em vez de uma única faixa

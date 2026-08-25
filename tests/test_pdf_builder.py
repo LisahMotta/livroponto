@@ -508,6 +508,31 @@ def test_tabela_dias_feriado_anota_vide_verso_na_observacao_sabado_domingo_nao()
     assert tabela._cellvalues[linha_sabado][5] == ""
 
 
+def test_tabela_dias_feriado_mostra_so_a_palavra_sem_descricao():
+    """Pedido do usuário: na folha, o feriado sai só como "FERIADO" —
+    sem a descrição (ex.: "Sexta-feira Santa"), que fica só no verso
+    (junto com a anotação "Vide verso" nessa mesma linha). Recesso,
+    ponto facultativo e suspensão continuam mostrando a descrição
+    normalmente na própria folha."""
+    from livroponto.models import DiaNaoLetivo
+
+    excecoes = [
+        DiaNaoLetivo(mes=4, dia=3, tipo="FERIADO", descricao="Sexta-feira Santa"),
+        DiaNaoLetivo(mes=4, dia=8, tipo="RECESSO", descricao="Recesso escolar"),
+    ]
+    dias = montar_calendario(2026, 4, uf="SP", excecoes=excecoes)
+    tabela = _tabela_dias(dias, _styles())
+
+    dia_feriado = next(d for d in dias if d.dia == 3)
+    dia_recesso = next(d for d in dias if d.dia == 8)
+
+    texto_feriado = tabela._cellvalues[dia_feriado.dia + 1][1].text
+    texto_recesso = tabela._cellvalues[dia_recesso.dia + 1][1].text
+    assert texto_feriado == "FERIADO"
+    assert "Sexta-feira Santa" not in texto_feriado
+    assert "Recesso escolar" in texto_recesso
+
+
 def test_folha_consolidacao_sem_feriados_no_mes_nao_anota_nada():
     config = _config_exemplo()
     config.mes = 4
