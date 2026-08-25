@@ -285,7 +285,7 @@ class Aplicativo(ttk.Window):
         tree = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
         for c in colunas:
             tree.heading(c, text=titulos[c])
-            tree.column(c, width=larguras[c], anchor="w")
+            tree.column(c, width=larguras[c], anchor="center")
         scroll = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scroll.set)
         tree.pack(side="left", fill="both", expand=True)
@@ -323,7 +323,7 @@ class Aplicativo(ttk.Window):
         self.tree_excecoes = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
         for c in colunas:
             self.tree_excecoes.heading(c, text=titulos[c])
-            self.tree_excecoes.column(c, width=larguras[c], anchor="w")
+            self.tree_excecoes.column(c, width=larguras[c], anchor="center")
         scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_excecoes.yview)
         self.tree_excecoes.configure(yscrollcommand=scroll.set)
         self.tree_excecoes.pack(side="left", fill="both", expand=True)
@@ -366,7 +366,7 @@ class Aplicativo(ttk.Window):
         self.tree_ferias = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
         for c in colunas:
             self.tree_ferias.heading(c, text=titulos[c])
-            self.tree_ferias.column(c, width=larguras[c], anchor="w")
+            self.tree_ferias.column(c, width=larguras[c], anchor="center")
         scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_ferias.yview)
         self.tree_ferias.configure(yscrollcommand=scroll.set)
         self.tree_ferias.pack(side="left", fill="both", expand=True)
@@ -419,7 +419,7 @@ class Aplicativo(ttk.Window):
         self.tree_licencas = ttk.Treeview(container, columns=colunas, show="headings", selectmode="browse")
         for c in colunas:
             self.tree_licencas.heading(c, text=titulos[c])
-            self.tree_licencas.column(c, width=larguras[c], anchor="w")
+            self.tree_licencas.column(c, width=larguras[c], anchor="center")
         scroll = ttk.Scrollbar(container, orient="vertical", command=self.tree_licencas.yview)
         self.tree_licencas.configure(yscrollcommand=scroll.set)
         self.tree_licencas.pack(side="left", fill="both", expand=True)
