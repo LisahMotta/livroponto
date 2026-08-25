@@ -165,6 +165,14 @@ class DiaNaoLetivo:
     descricao: str = ""
 
 
+# Rótulo padrão embaixo da assinatura nos termos de abertura/encerramento —
+# usado quando `LivroPontoConfig.rotulo_assinatura` está em branco (o caso
+# comum: livro de uma escola). Uma URE ou outra unidade não-escolar pode
+# trocar por outro texto (ex.: "Dirigente Regional de Ensino") sem precisar
+# de nenhuma mudança de código, só preenchendo o campo na aba Escola.
+ROTULO_ASSINATURA_PADRAO = "Direção da Unidade Escolar"
+
+
 @dataclass
 class LivroPontoConfig:
     escola: Escola
@@ -174,17 +182,24 @@ class LivroPontoConfig:
     livro_numero: str = ""
     cidade_assinatura: str = ""
     diretor_nome: str = ""
+    rotulo_assinatura: str = ""
     uf: str = "SP"
     dias_excecao: list[DiaNaoLetivo] = field(default_factory=list)
 
     def pessoas_por_tipo(self, tipo: TipoServidor) -> list[Pessoa]:
         return [p for p in self.pessoas if p.tipo == tipo]
 
+    def rotulo_assinatura_efetivo(self) -> str:
+        """Texto que sai impresso embaixo da assinatura nos termos — o que
+        foi digitado em `rotulo_assinatura` (aba Escola), ou o padrão de
+        escola se o campo estiver em branco."""
+        return self.rotulo_assinatura.strip() or ROTULO_ASSINATURA_PADRAO
+
     def nome_diretor(self) -> str:
-        """Nome de quem assina "Direção da Unidade Escolar" nos termos de
-        abertura/encerramento — vem direto do campo `diretor_nome`
-        cadastrado na aba Escola. Não busca mais no cadastro da Gestão: essa
-        busca (por um cargo começando com "Diretor") dependia de outra aba
-        e de quais tipos estavam marcados em "Incluir" na hora de gerar,
-        e sumia sozinha quando a Gestão não entrava naquele PDF."""
+        """Nome de quem assina o termo de abertura/encerramento — vem
+        direto do campo `diretor_nome` cadastrado na aba Escola. Não busca
+        mais no cadastro da Gestão: essa busca (por um cargo começando com
+        "Diretor") dependia de outra aba e de quais tipos estavam marcados
+        em "Incluir" na hora de gerar, e sumia sozinha quando a Gestão não
+        entrava naquele PDF."""
         return self.diretor_nome.strip()

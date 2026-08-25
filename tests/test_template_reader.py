@@ -162,3 +162,19 @@ def test_salvar_modelo_e_ler_modelo_preservam_licencas(tmp_path):
         ("PREMIO", "01/06/2026 a 30/06/2026"),
     }
     assert sem_licenca.licencas == []
+
+
+def test_salvar_modelo_e_ler_modelo_preservam_rotulo_de_assinatura(tmp_path):
+    config = LivroPontoConfig(
+        escola=Escola(nome="URE Exemplo", municipio="Cidade Exemplo"),
+        mes=4,
+        ano=2026,
+        rotulo_assinatura="Dirigente Regional de Ensino",
+    )
+
+    caminho = tmp_path / "modelo.xlsx"
+    salvar_modelo(config, caminho)
+    recarregado = ler_modelo(caminho)
+
+    assert recarregado.rotulo_assinatura == "Dirigente Regional de Ensino"
+    assert recarregado.rotulo_assinatura_efetivo() == "Dirigente Regional de Ensino"

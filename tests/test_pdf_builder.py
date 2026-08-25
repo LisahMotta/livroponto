@@ -198,6 +198,28 @@ def test_nome_diretor_vem_do_campo_e_ignora_espacos_em_branco():
     assert config.nome_diretor() == "Fulana Diretora"
 
 
+def test_termo_usa_rotulo_de_assinatura_customizado():
+    """Pedido do usuário: preparar o livro pra uso numa URE (Unidade
+    Regional de Ensino), não só em escola — o rótulo embaixo da
+    assinatura ("Direção da Unidade Escolar") tem que poder virar outra
+    coisa (ex.: "Dirigente Regional de Ensino") sem mexer em código."""
+    config = _config_exemplo()
+    config.rotulo_assinatura = "Dirigente Regional de Ensino"
+    elementos = _termo(config, TipoServidor.ADMINISTRATIVO, encerramento=False, styles=_styles())
+    textos = _textos(elementos)
+    assert "Dirigente Regional de Ensino" in textos
+    assert "Direção da Unidade Escolar" not in textos
+
+
+def test_rotulo_assinatura_efetivo_cai_no_padrao_de_escola_se_em_branco():
+    config = _config_exemplo()
+    assert config.rotulo_assinatura == ""
+    assert config.rotulo_assinatura_efetivo() == "Direção da Unidade Escolar"
+
+    config.rotulo_assinatura = "  Dirigente Regional de Ensino  "
+    assert config.rotulo_assinatura_efetivo() == "Dirigente Regional de Ensino"
+
+
 def test_pessoa_periodo_ferias():
     sem_ferias = Pessoa(nome="Sem Férias", tipo=TipoServidor.ADMINISTRATIVO)
     assert sem_ferias.periodo_ferias == ""

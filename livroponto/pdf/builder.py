@@ -204,7 +204,7 @@ def _termo(
     nome_diretor = config.nome_diretor()
     if nome_diretor:
         elementos.append(Paragraph(nome_diretor, styles["CorpoCentro"]))
-    elementos.append(Paragraph("Direção da Unidade Escolar", styles["CorpoCentro"]))
+    elementos.append(Paragraph(config.rotulo_assinatura_efetivo(), styles["CorpoCentro"]))
     return elementos
 
 

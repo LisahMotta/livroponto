@@ -194,6 +194,16 @@ class Aplicativo(ttk.Window):
         self.var_diretor = campo(9, 0, "Nome do Diretor(a) (assinatura dos termos)", 60)
         aba.grid_slaves(row=9, column=1)[0].grid(columnspan=3, sticky="we")
 
+        self.var_rotulo_assinatura = campo(
+            10, 0, "Rótulo da assinatura (padrão: Direção da Unidade Escolar)", 60
+        )
+        aba.grid_slaves(row=10, column=1)[0].grid(columnspan=3, sticky="we")
+        ttk.Label(
+            aba,
+            text="(deixe em branco para escola; use algo como \"Dirigente Regional de Ensino\" pra uma URE)",
+            foreground="grey",
+        ).grid(row=11, column=0, columnspan=4, sticky="w")
+
     def _construir_aba_pessoas_tipo(self, aba: ttk.Frame, tipo: TipoServidor) -> ttk.Treeview:
         """Monta uma aba de cadastro (Treeview + Adicionar/Editar/Remover)
         filtrada para um único tipo de servidor — Administrativo e Gestão
@@ -439,6 +449,7 @@ class Aplicativo(ttk.Window):
         self.var_uf.set(self.dados.uf or "SP")
         self.var_cidade.set(self.dados.cidade_assinatura or e.municipio)
         self.var_diretor.set(self.dados.diretor_nome)
+        self.var_rotulo_assinatura.set(self.dados.rotulo_assinatura)
 
     def _sincronizar_escola(self) -> None:
         e = self.dados.escola
@@ -459,6 +470,7 @@ class Aplicativo(ttk.Window):
         self.dados.uf = self.var_uf.get().strip() or "SP"
         self.dados.cidade_assinatura = self.var_cidade.get().strip()
         self.dados.diretor_nome = self.var_diretor.get().strip()
+        self.dados.rotulo_assinatura = self.var_rotulo_assinatura.get().strip()
 
     def _atualizar_tudo(self) -> None:
         self._atualizar_campos_escola()

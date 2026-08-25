@@ -123,6 +123,11 @@ with col6:
 config.diretor_nome = st.text_input(
     "Nome do Diretor(a) (assinatura dos termos)", config.diretor_nome
 )
+config.rotulo_assinatura = st.text_input(
+    "Rótulo da assinatura (em branco = \"Direção da Unidade Escolar\"; "
+    "use algo como \"Dirigente Regional de Ensino\" pra uma URE)",
+    config.rotulo_assinatura,
+)
 
 st.subheader("Servidores e professores")
 st.caption(

@@ -151,6 +151,18 @@ def test_sincronizar_escola_le_campos_para_o_modelo(app):
     assert app.dados.uf == "SP"
 
 
+def test_rotulo_de_assinatura_sincroniza_com_o_modelo(app):
+    """Campo pra preparar o livro pro uso numa URE — em branco (padrão de
+    escola) ou preenchido (ex.: "Dirigente Regional de Ensino")."""
+    app.var_rotulo_assinatura.set("Dirigente Regional de Ensino")
+    app._sincronizar_escola()
+    assert app.dados.rotulo_assinatura == "Dirigente Regional de Ensino"
+
+    app.dados.rotulo_assinatura = "Outro Rótulo"
+    app._atualizar_campos_escola()
+    assert app.var_rotulo_assinatura.get() == "Outro Rótulo"
+
+
 def test_salvar_e_reabrir_cadastro_xlsx(app, tmp_path):
     app.dados.pessoas.append(_pessoa_exemplo())
     app.dados.pessoas.append(_pessoa_exemplo(nome="Ciclana Teste", tipo=TipoServidor.DOCENTE, disciplinas="HISTÓRIA"))
