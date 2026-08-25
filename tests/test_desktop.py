@@ -25,7 +25,18 @@ from livroponto.desktop.dialogs import DialogoExcecao, DialogoPessoa  # noqa: E4
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
+    # Isola o "lembrar último arquivo" (livroponto/desktop/preferencias.py)
+    # do disco real do usuário — sem isso, testes que salvam/abrem um
+    # arquivo em tmp_path escreveriam no ~/.livroponto/estado.json de
+    # verdade, e o próximo teste (ou a próxima sessão do app de verdade)
+    # tentaria reabrir sozinho um arquivo de tmp_path que já não existe
+    # mais.
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+
     aplicativo = Aplicativo()
     yield aplicativo
     aplicativo.destroy()
@@ -196,6 +207,82 @@ def test_salvar_e_reabrir_cadastro_xlsx(app, tmp_path):
     recarregado = ler_modelo(caminho)
     assert recarregado.escola.nome == "EE Exemplo Fictício"
     assert len(recarregado.pessoas) == 2
+
+
+def test_salvar_e_abrir_lembram_o_ultimo_caminho_pra_proxima_sessao(app, tmp_path, monkeypatch):
+    """Pedido do usuário: uma vez salvo, o cadastro reabre sozinho na
+    próxima vez que o app é iniciado — em vez de sempre começar em
+    branco e precisar ir em "Abrir..." toda vez."""
+    import livroponto.desktop.app as app_mod
+
+    lembrados = []
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: lembrados.append(caminho))
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    caminho = tmp_path / "cadastro.xlsx"
+    app.var_nome.set("EE Exemplo Fictício")
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: str(caminho))
+    app._salvar_cadastro()  # sem caminho_atual ainda -> "salvar como"
+    assert lembrados == [str(caminho)]
+
+    lembrados.clear()
+    app._salvar_cadastro()  # já com caminho_atual -> salva direto
+    assert lembrados == [str(caminho)]
+
+    lembrados.clear()
+    monkeypatch.setattr(filedialog, "askopenfilename", lambda **kw: str(caminho))
+    app._abrir()
+    assert lembrados == [str(caminho)]
+
+
+def test_app_reabre_sozinho_o_ultimo_cadastro_salvo(tmp_path, monkeypatch):
+    import livroponto.desktop.app as app_mod
+    from livroponto.readers.template_reader import salvar_modelo
+    from livroponto.models import Escola, LivroPontoConfig
+
+    caminho = tmp_path / "cadastro.xlsx"
+    salvar_modelo(LivroPontoConfig(escola=Escola(nome="EE Já Salva"), mes=4, ano=2026), caminho)
+
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: str(caminho))
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+
+    aplicativo = app_mod.Aplicativo()
+    try:
+        assert aplicativo.dados.escola.nome == "EE Já Salva"
+        assert aplicativo.caminho_atual == str(caminho)
+        assert aplicativo.var_nome.get() == "EE Já Salva"
+    finally:
+        aplicativo.destroy()
+
+
+def test_app_sem_ultimo_caminho_lembrado_comeca_em_branco(monkeypatch):
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: None)
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+
+    aplicativo = app_mod.Aplicativo()
+    try:
+        assert aplicativo.caminho_atual is None
+        assert aplicativo.dados.pessoas == []
+    finally:
+        aplicativo.destroy()
+
+
+def test_app_com_ultimo_caminho_apagado_comeca_em_branco_sem_quebrar(tmp_path, monkeypatch):
+    """O arquivo lembrado pode ter sido movido/apagado entre uma sessão
+    e outra — o app não pode quebrar por causa disso, só ignora e
+    começa em branco, como sempre foi."""
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "carregar_ultimo_caminho", lambda: str(tmp_path / "nao-existe-mais.xlsx"))
+    monkeypatch.setattr(app_mod, "salvar_ultimo_caminho", lambda caminho: None)
+
+    aplicativo = app_mod.Aplicativo()
+    try:
+        assert aplicativo.caminho_atual is None
+    finally:
+        aplicativo.destroy()
 
 
 def test_app_comeca_sem_aviso_de_dados_nao_salvos(app):

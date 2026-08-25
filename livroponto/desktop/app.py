@@ -28,6 +28,7 @@ from ..pdf.builder import gerar_pdf, gerar_termos_pdf
 from ..readers.template_reader import ler_modelo, salvar_modelo
 from ..readers.xlsb_reader import ler_livro_ponto
 from .dialogs import DialogoExcecao, DialogoFerias, DialogoLicenca, DialogoPessoa
+from .preferencias import carregar_ultimo_caminho, salvar_ultimo_caminho
 
 _ICONE = Path(__file__).resolve().parent / "assets" / "icone_livro.png"
 _ICONES_DIR = Path(__file__).resolve().parent / "assets" / "icones"
@@ -116,6 +117,27 @@ class Aplicativo(ttk.Window):
 
         self._atualizar_tudo()
         self._marcar_estado_salvo()
+        self._tentar_reabrir_ultimo_cadastro()
+
+    def _tentar_reabrir_ultimo_cadastro(self) -> None:
+        """Reabre sozinho o último cadastro salvo/aberto (se houver e
+        ainda existir no disco) assim que o app inicia — pedido do
+        usuário: até aqui, todo início de sessão começava em branco e
+        era preciso ir em "Abrir..." pra recarregar o mesmo arquivo de
+        sempre. Falha (arquivo movido/apagado/corrompido) é silenciosa:
+        o app simplesmente fica no cadastro em branco, como sempre foi."""
+        caminho = carregar_ultimo_caminho()
+        if not caminho or not Path(caminho).exists():
+            return
+        try:
+            novo = ler_livro_ponto(caminho) if caminho.lower().endswith(".xlsb") else ler_modelo(caminho)
+        except Exception:  # noqa: BLE001 — silencioso: não incomoda com erro toda vez que abre o app
+            return
+        self.dados = novo
+        self.caminho_atual = caminho
+        self._atualizar_tudo()
+        self._marcar_estado_salvo()
+        self._status(f"Reaberto automaticamente: {Path(caminho).name}")
 
     # ------------------------------------------------------------------
     # Construção da interface
@@ -766,6 +788,7 @@ class Aplicativo(ttk.Window):
         self.caminho_atual = caminho
         self._atualizar_tudo()
         self._marcar_estado_salvo()
+        salvar_ultimo_caminho(caminho)
         self._status(f"Carregado: {len(novo.pessoas)} pessoa(s) de {Path(caminho).name}")
 
     def _salvar_cadastro(self) -> None:
@@ -785,6 +808,7 @@ class Aplicativo(ttk.Window):
             messagebox.showerror("Erro ao salvar", str(exc), parent=self)
             return
         self._marcar_estado_salvo()
+        salvar_ultimo_caminho(self.caminho_atual)
         self._status(f"Cadastro salvo em {self.caminho_atual}")
 
     def _salvar_cadastro_como(self) -> None:
@@ -810,6 +834,7 @@ class Aplicativo(ttk.Window):
             return
         self.caminho_atual = caminho
         self._marcar_estado_salvo()
+        salvar_ultimo_caminho(caminho)
         self._status(f"Cadastro salvo em {caminho}")
         messagebox.showinfo("Cadastro salvo", f"Salvo em:\n{caminho}", parent=self)
 
