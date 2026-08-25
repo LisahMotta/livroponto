@@ -30,6 +30,7 @@ from ..readers.xlsb_reader import ler_livro_ponto
 from .dialogs import DialogoExcecao, DialogoFerias, DialogoLicenca, DialogoPessoa
 
 _ICONE = Path(__file__).resolve().parent / "assets" / "icone_livro.png"
+_ICONES_DIR = Path(__file__).resolve().parent / "assets" / "icones"
 
 MESES_CAP = [nome_mes(i).capitalize() for i in range(1, 13)]
 
@@ -103,6 +104,10 @@ class Aplicativo(ttk.Window):
         # self.dados (depois de sincronizar a aba Escola) pra saber se
         # há alteração pendente. Populado no fim do __init__.
         self._dados_no_ultimo_save: LivroPontoConfig | None = None
+        # Cache de ícones dos botões/abas (ver _icone()) — precisa existir
+        # antes de _construir_barra_ferramentas()/_construir_abas(), que já
+        # chamam _icone() pra montar os botões e as abas do notebook.
+        self._icones: dict[str, tk.PhotoImage | None] = {}
 
         self._construir_barra_ferramentas()
         self._construir_abas()
@@ -115,20 +120,57 @@ class Aplicativo(ttk.Window):
     # ------------------------------------------------------------------
     # Construção da interface
     # ------------------------------------------------------------------
+    def _icone(self, nome: str) -> tk.PhotoImage | None:
+        """Carrega (e cacheia) o ícone desktop/assets/icones/{nome}.png.
+        Retorna None se o arquivo não existir/não puder ser carregado —
+        o botão/aba correspondente simplesmente fica sem ícone nesse
+        caso (mesmo tratamento tolerante já usado pro ícone da janela,
+        em vez de derrubar o app por causa de um PNG faltando)."""
+        if nome not in self._icones:
+            try:
+                self._icones[nome] = tk.PhotoImage(file=str(_ICONES_DIR / f"{nome}.png"))
+            except tk.TclError:
+                self._icones[nome] = None
+        return self._icones[nome]
+
+    def _icone_kwargs(self, nome: str) -> dict:
+        """kwargs prontos pra passar num widget (image=.../compound="left"),
+        vazio se o ícone não existir. Não dá pra simplesmente passar
+        image=None direto: alguns widgets (ex.: Notebook.add) não toleram
+        e travam com "wrong # args" em vez de ignorar a opção."""
+        icone = self._icone(nome)
+        return {"image": icone, "compound": "left"} if icone is not None else {}
+
     def _construir_barra_ferramentas(self) -> None:
         barra_arquivo = ttk.Frame(self, padding=(8, 8, 8, 4))
         barra_arquivo.pack(fill="x")
-        ttk.Button(barra_arquivo, text="Novo", command=self._novo, bootstyle="secondary-outline").pack(
-            side="left"
-        )
         ttk.Button(
-            barra_arquivo, text="Abrir...", command=self._abrir, bootstyle="secondary-outline"
-        ).pack(side="left", padx=6)
-        ttk.Button(
-            barra_arquivo, text="Salvar", command=self._salvar_cadastro, bootstyle="secondary-outline"
+            barra_arquivo,
+            text="Novo",
+            command=self._novo,
+            bootstyle="secondary-outline",
+            **self._icone_kwargs("novo"),
         ).pack(side="left")
         ttk.Button(
-            barra_arquivo, text="Salvar como...", command=self._salvar_cadastro_como, bootstyle="secondary-outline"
+            barra_arquivo,
+            text="Abrir...",
+            command=self._abrir,
+            bootstyle="secondary-outline",
+            **self._icone_kwargs("abrir"),
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            barra_arquivo,
+            text="Salvar",
+            command=self._salvar_cadastro,
+            bootstyle="secondary-outline",
+            **self._icone_kwargs("salvar"),
+        ).pack(side="left")
+        ttk.Button(
+            barra_arquivo,
+            text="Salvar como...",
+            command=self._salvar_cadastro_como,
+            bootstyle="secondary-outline",
+            **self._icone_kwargs("salvar_como"),
         ).pack(side="left", padx=(6, 0))
         self.var_aviso_nao_salvo = tk.StringVar(value="")
         ttk.Label(
@@ -138,7 +180,11 @@ class Aplicativo(ttk.Window):
         barra_gerar = ttk.Frame(self, padding=(8, 0, 8, 4))
         barra_gerar.pack(fill="x")
         ttk.Button(
-            barra_gerar, text="🖨️ Gerar Livro Ponto (PDF)...", command=self._gerar_pdf, bootstyle="success"
+            barra_gerar,
+            text="🖨️ Gerar Livro Ponto (PDF)...",
+            command=self._gerar_pdf,
+            bootstyle="success",
+            **self._icone_kwargs("gerar_pdf"),
         ).pack(side="left")
 
         ttk.Label(barra_gerar, text="Imprimir:").pack(side="left", padx=(12, 2))
@@ -221,13 +267,13 @@ class Aplicativo(ttk.Window):
         aba_ferias = ttk.Frame(notebook, padding=12)
         aba_licencas = ttk.Frame(notebook, padding=12)
         aba_termos = ttk.Frame(notebook, padding=12)
-        notebook.add(aba_escola, text="Escola")
-        notebook.add(aba_administrativo, text="Administrativo")
-        notebook.add(aba_gestao, text="Gestão")
-        notebook.add(aba_excecoes, text="Feriados e exceções")
-        notebook.add(aba_ferias, text="Férias")
-        notebook.add(aba_licencas, text="Licenças")
-        notebook.add(aba_termos, text="Termos")
+        notebook.add(aba_escola, text="Escola", **self._icone_kwargs("escola"))
+        notebook.add(aba_administrativo, text="Administrativo", **self._icone_kwargs("administrativo"))
+        notebook.add(aba_gestao, text="Gestão", **self._icone_kwargs("gestao"))
+        notebook.add(aba_excecoes, text="Feriados e exceções", **self._icone_kwargs("feriados"))
+        notebook.add(aba_ferias, text="Férias", **self._icone_kwargs("ferias"))
+        notebook.add(aba_licencas, text="Licenças", **self._icone_kwargs("licencas"))
+        notebook.add(aba_termos, text="Termos", **self._icone_kwargs("termos"))
 
         self._construir_aba_escola(aba_escola)
         self.tree_administrativo = self._construir_aba_pessoas_tipo(aba_administrativo, TipoServidor.ADMINISTRATIVO)
