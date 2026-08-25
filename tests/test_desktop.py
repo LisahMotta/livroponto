@@ -519,6 +519,26 @@ def test_gerar_termos_pelo_botao_gera_pdf_de_verdade(app, tmp_path, monkeypatch)
     assert caminho.stat().st_size > 500
 
 
+def test_adicionar_editar_ou_remover_servidor_atualiza_ferias_e_licencas(app):
+    """Bug real reportado pelo usuário: um servidor recém-cadastrado (ou
+    removido) na aba Administrativo/Gestão não aparecia/sumia na aba
+    Férias nem no combo de servidor da aba Licenças até fechar e reabrir
+    o cadastro — _atualizar_listas_pessoas() não recarregava essas duas
+    abas, só as próprias listas de Administrativo/Gestão."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Novo Servidor"))
+    app._atualizar_listas_pessoas()
+
+    assert len(app.tree_ferias.get_children()) == 1
+    assert app.tree_ferias.item("0", "values")[0] == "Novo Servidor"
+    valores_combo = app.combo_licenca_servidor.cget("values")
+    assert any("Novo Servidor" in v for v in valores_combo)
+
+    del app.dados.pessoas[0]
+    app._atualizar_listas_pessoas()
+    assert len(app.tree_ferias.get_children()) == 0
+    assert len(app.combo_licenca_servidor.cget("values")) == 0
+
+
 def test_aba_ferias_lista_todo_mundo_e_editar_atualiza_pessoa(app):
     app.dados.pessoas.append(_pessoa_exemplo(nome="Servidor Sem Férias", rg="5"))
     app._atualizar_lista_ferias()

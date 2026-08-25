@@ -474,10 +474,8 @@ class Aplicativo(ttk.Window):
 
     def _atualizar_tudo(self) -> None:
         self._atualizar_campos_escola()
-        self._atualizar_listas_pessoas()
+        self._atualizar_listas_pessoas()  # também recarrega Férias e Licenças
         self._atualizar_lista_excecoes()
-        self._atualizar_lista_ferias()
-        self._atualizar_lista_licencas()
 
     def _status(self, texto: str) -> None:
         self.var_status.set(texto)
@@ -662,6 +660,12 @@ class Aplicativo(ttk.Window):
     def _atualizar_listas_pessoas(self) -> None:
         self._atualizar_lista_pessoas_tipo(TipoServidor.ADMINISTRATIVO)
         self._atualizar_lista_pessoas_tipo(TipoServidor.GESTAO)
+        # Férias e Licenças listam todo mundo (qualquer tipo) — precisam
+        # recarregar sempre que o cadastro de servidores mudar (adicionar,
+        # editar, remover), senão um servidor recém-cadastrado não aparece
+        # lá até fechar e reabrir o app.
+        self._atualizar_lista_ferias()
+        self._atualizar_lista_licencas()
 
     def _pessoa_selecionada_tipo(self, tipo: TipoServidor) -> int | None:
         sel = self._tree_do_tipo(tipo).selection()
