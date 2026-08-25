@@ -75,7 +75,7 @@ def _abrir_no_sistema(caminho: str) -> None:
 
 class Aplicativo(ttk.Window):
     def __init__(self) -> None:
-        super().__init__(title="Livro Ponto — editor", themename="bootstrap-light", size=(1000, 650))
+        super().__init__(title="Livro Ponto — editor", themename="cosmo", size=(1000, 650))
         self.minsize(760, 480)
         try:
             self.iconphoto(True, tk.PhotoImage(file=str(_ICONE)))
@@ -238,64 +238,73 @@ class Aplicativo(ttk.Window):
         self._construir_aba_termos(aba_termos)
 
     def _construir_aba_escola(self, aba: ttk.Frame) -> None:
-        aba.columnconfigure(1, weight=1)
-        aba.columnconfigure(3, weight=1)
-
         # Rótulo alinhado à direita (encostado no campo) — a coluna do
         # rótulo é larga o bastante pra caber o texto mais comprido
         # ("Rótulo da assinatura (padrão: ...)"), então com o rótulo
         # alinhado à esquerda os campos mais curtos ("Nome da escola" etc.)
         # ficavam com um vão enorme entre o texto e a caixa.
-        def campo(r: int, c: int, rotulo: str, largura: int = 34) -> tk.StringVar:
-            ttk.Label(aba, text=rotulo).grid(row=r, column=c, sticky="e", padx=(0, 8), pady=4)
+        def campo(
+            frame: ttk.Labelframe, r: int, c: int, rotulo: str, largura: int = 34, columnspan: int = 1
+        ) -> tk.StringVar:
+            ttk.Label(frame, text=rotulo).grid(row=r, column=c, sticky="e", padx=(0, 8), pady=4)
             var = tk.StringVar()
-            ttk.Entry(aba, textvariable=var, width=largura).grid(row=r, column=c + 1, sticky="we", pady=4)
+            ttk.Entry(frame, textvariable=var, width=largura).grid(
+                row=r, column=c + 1, columnspan=columnspan, sticky="we", pady=4
+            )
             var.trace_add("write", self._ao_editar_campo_escola)
             return var
 
-        self.var_nome = campo(0, 0, "Nome da escola", 60)
-        aba.grid_slaves(row=0, column=1)[0].grid(columnspan=3, sticky="we")
-        self.var_diretoria = campo(1, 0, "Diretoria de Ensino", 60)
-        aba.grid_slaves(row=1, column=1)[0].grid(columnspan=3, sticky="we")
-        self.var_endereco = campo(2, 0, "Endereço", 60)
-        aba.grid_slaves(row=2, column=1)[0].grid(columnspan=3, sticky="we")
-        self.var_municipio = campo(3, 0, "Município")
-        self.var_telefone1 = campo(3, 2, "Telefone")
-        self.var_email = campo(4, 0, "E-mail")
-        self.var_codigo_ua = campo(4, 2, "Código UA", 16)
-        self.var_codigo_cie = campo(5, 0, "Código CIE", 16)
+        # Dois grupos visuais (Labelframe) em vez de um formulário corrido
+        # só — deixa mais fácil separar "quem é a escola" de "o que muda
+        # todo mês/livro".
+        frame_id = ttk.Labelframe(aba, text="Identificação da escola", padding=10)
+        frame_id.pack(fill="x", pady=(0, 10))
+        frame_id.columnconfigure(1, weight=1)
+        frame_id.columnconfigure(3, weight=1)
 
-        ttk.Separator(aba).grid(row=6, column=0, columnspan=4, sticky="we", pady=10)
+        self.var_nome = campo(frame_id, 0, 0, "Nome da escola", 60, columnspan=3)
+        self.var_diretoria = campo(frame_id, 1, 0, "Diretoria de Ensino", 60, columnspan=3)
+        self.var_endereco = campo(frame_id, 2, 0, "Endereço", 60, columnspan=3)
+        self.var_municipio = campo(frame_id, 3, 0, "Município")
+        self.var_telefone1 = campo(frame_id, 3, 2, "Telefone")
+        self.var_email = campo(frame_id, 4, 0, "E-mail")
+        self.var_codigo_ua = campo(frame_id, 4, 2, "Código UA", 16)
+        self.var_codigo_cie = campo(frame_id, 5, 0, "Código CIE", 16)
 
-        ttk.Label(aba, text="Mês").grid(row=7, column=0, sticky="e", padx=(0, 8), pady=4)
+        frame_periodo = ttk.Labelframe(aba, text="Período e assinatura", padding=10)
+        frame_periodo.pack(fill="x")
+        frame_periodo.columnconfigure(1, weight=1)
+        frame_periodo.columnconfigure(3, weight=1)
+
+        ttk.Label(frame_periodo, text="Mês").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=4)
         self.var_mes = tk.StringVar(value=MESES_CAP[0])
         ttk.Combobox(
-            aba, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
-        ).grid(row=7, column=1, sticky="w", pady=4)
+            frame_periodo, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
+        ).grid(row=0, column=1, sticky="w", pady=4)
         self.var_mes.trace_add("write", self._ao_editar_campo_escola)
 
-        ttk.Label(aba, text="Ano").grid(row=7, column=2, sticky="e", padx=(12, 8), pady=4)
+        ttk.Label(frame_periodo, text="Ano").grid(row=0, column=2, sticky="e", padx=(12, 8), pady=4)
         self.var_ano = tk.StringVar()
-        ttk.Spinbox(aba, from_=2000, to=2100, textvariable=self.var_ano, width=8).grid(
-            row=7, column=3, sticky="w", pady=4
+        ttk.Spinbox(frame_periodo, from_=2000, to=2100, textvariable=self.var_ano, width=8).grid(
+            row=0, column=3, sticky="w", pady=4
         )
         self.var_ano.trace_add("write", self._ao_editar_campo_escola)
 
-        self.var_uf = campo(8, 0, "UF (feriados)", 6)
-        self.var_cidade = campo(8, 2, "Cidade (assinatura dos termos)", 24)
+        self.var_uf = campo(frame_periodo, 1, 0, "UF (feriados)", 6)
+        self.var_cidade = campo(frame_periodo, 1, 2, "Cidade (assinatura dos termos)", 24)
 
-        self.var_diretor = campo(9, 0, "Nome do Diretor(a) (assinatura dos termos)", 60)
-        aba.grid_slaves(row=9, column=1)[0].grid(columnspan=3, sticky="we")
+        self.var_diretor = campo(
+            frame_periodo, 2, 0, "Nome do Diretor(a) (assinatura dos termos)", 60, columnspan=3
+        )
 
         self.var_rotulo_assinatura = campo(
-            10, 0, "Rótulo da assinatura (padrão: Direção da Unidade Escolar)", 60
+            frame_periodo, 3, 0, "Rótulo da assinatura (padrão: Direção da Unidade Escolar)", 60, columnspan=3
         )
-        aba.grid_slaves(row=10, column=1)[0].grid(columnspan=3, sticky="we")
         ttk.Label(
-            aba,
+            frame_periodo,
             text="(deixe em branco para escola; use algo como \"Dirigente Regional de Ensino\" pra uma URE)",
             foreground="grey",
-        ).grid(row=11, column=0, columnspan=4, sticky="w")
+        ).grid(row=4, column=0, columnspan=4, sticky="w")
 
     def _construir_aba_pessoas_tipo(self, aba: ttk.Frame, tipo: TipoServidor) -> ttk.Treeview:
         """Monta uma aba de cadastro (Treeview + Adicionar/Editar/Remover)
@@ -360,6 +369,7 @@ class Aplicativo(ttk.Window):
         for c in colunas:
             tree.heading(c, text=titulos[c])
             tree.column(c, width=larguras[c], anchor="center")
+        tree.tag_configure("linha_par", background="#eef1f5")  # zebrado — facilita acompanhar a linha
         scroll = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scroll.set)
         tree.pack(side="left", fill="both", expand=True)
@@ -914,9 +924,14 @@ class Aplicativo(ttk.Window):
             ((i, p) for i, p in enumerate(self.dados.pessoas) if p.tipo == tipo),
             key=lambda item: chave_ordenacao_rg(item[1]),
         )
-        for i, p in itens:
+        for posicao, (i, p) in enumerate(itens):
             jornada = "" if p.jornada_semanal is None else f"{p.jornada_semanal:g}"
             marcado = "☑" if id(p) in self._pessoas_selecionadas_impressao else "☐"
+            # Zebrado pela posição exibida (não pelo índice real em
+            # self.dados.pessoas — esse segue a ordem de cadastro, não a
+            # ordem de tela, e listaria linhas pares/ímpares intercaladas
+            # sem padrão nenhum).
+            tags = ("linha_par",) if posicao % 2 == 0 else ()
             tree.insert(
                 "",
                 "end",
@@ -930,6 +945,7 @@ class Aplicativo(ttk.Window):
                     "Sim" if p.ponto else "Não",
                     _observacoes_exibicao(p),
                 ),
+                tags=tags,
             )
 
     def _alternar_selecao_impressao(self, event: tk.Event, tree: ttk.Treeview) -> str | None:
