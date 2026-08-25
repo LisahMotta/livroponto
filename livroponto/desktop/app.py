@@ -200,6 +200,21 @@ class Aplicativo(ttk.Window):
             bootstyle="round-toggle",
         ).pack(side="left")
 
+        # Mês/Ano do livro fica aqui — junto de quem gera o PDF, sempre
+        # visível independente da aba aberta — em vez de dentro da aba
+        # Escola, longe de onde o livro é de fato gerado.
+        ttk.Label(barra_gerar, text="Mês do livro:").pack(side="left", padx=(16, 2))
+        self.var_mes = tk.StringVar(value=MESES_CAP[0])
+        ttk.Combobox(
+            barra_gerar, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
+        ).pack(side="left")
+        self.var_mes.trace_add("write", self._ao_editar_campo_escola)
+
+        ttk.Label(barra_gerar, text="Ano").pack(side="left", padx=(8, 2))
+        self.var_ano = tk.StringVar()
+        ttk.Spinbox(barra_gerar, from_=2000, to=2100, textvariable=self.var_ano, width=8).pack(side="left")
+        self.var_ano.trace_add("write", self._ao_editar_campo_escola)
+
         # Linha própria pra "Incluir" (em vez de dividir a mesma linha com
         # "Imprimir") — evita que o texto dos toggles seja cortado em
         # janelas mais estreitas.
@@ -299,26 +314,6 @@ class Aplicativo(ttk.Window):
             )
             var.trace_add("write", self._ao_editar_campo_escola)
             return var
-
-        # Mês/Ano em cima, sozinho e bem visível — é o campo que mais
-        # muda (toda vez que se gera o livro de um mês novo), então fica
-        # separado da "Identificação da escola" (não muda quase nunca) e
-        # de "Período e assinatura" (UF/cidade/diretor, muda raramente),
-        # em vez de escondido no meio de campos que raramente mudam.
-        frame_mes = ttk.Labelframe(aba, text="Mês do Livro Ponto", padding=10)
-        frame_mes.pack(fill="x", pady=(0, 10))
-
-        ttk.Label(frame_mes, text="Mês").pack(side="left", padx=(0, 8))
-        self.var_mes = tk.StringVar(value=MESES_CAP[0])
-        ttk.Combobox(
-            frame_mes, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
-        ).pack(side="left")
-        self.var_mes.trace_add("write", self._ao_editar_campo_escola)
-
-        ttk.Label(frame_mes, text="Ano").pack(side="left", padx=(16, 8))
-        self.var_ano = tk.StringVar()
-        ttk.Spinbox(frame_mes, from_=2000, to=2100, textvariable=self.var_ano, width=8).pack(side="left")
-        self.var_ano.trace_add("write", self._ao_editar_campo_escola)
 
         # Dois grupos visuais (Labelframe) em vez de um formulário corrido
         # só — deixa mais fácil separar "quem é a escola" de "o que muda
