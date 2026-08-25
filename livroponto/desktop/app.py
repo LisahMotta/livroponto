@@ -11,6 +11,7 @@ ou diretamente:
 """
 from __future__ import annotations
 
+import copy
 import os
 import subprocess
 import sys
@@ -93,12 +94,23 @@ class Aplicativo(ttk.Window):
         # mundo dos tipos marcados em "Incluir"); com alguém marcado, o
         # botão "Gerar Livro Ponto" imprime só quem estiver marcado aqui.
         self._pessoas_selecionadas_impressao: set[int] = set()
+        # Verdadeiro só durante um carregamento em massa (novo/abrir) —
+        # os campos da aba Escola são StringVars com trace: sem essa
+        # trava, popular esses campos a partir de self.dados marcaria
+        # "dados não salvos" logo depois de abrir ou começar do zero.
+        self._carregando = False
+        # Snapshot do que está salvo no momento — comparado com
+        # self.dados (depois de sincronizar a aba Escola) pra saber se
+        # há alteração pendente. Populado no fim do __init__.
+        self._dados_no_ultimo_save: LivroPontoConfig | None = None
 
         self._construir_barra_ferramentas()
         self._construir_abas()
         self._construir_barra_status()
+        self.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 
         self._atualizar_tudo()
+        self._marcar_estado_salvo()
 
     # ------------------------------------------------------------------
     # Construção da interface
@@ -113,7 +125,14 @@ class Aplicativo(ttk.Window):
             barra_arquivo, text="Abrir...", command=self._abrir, bootstyle="secondary-outline"
         ).pack(side="left", padx=6)
         ttk.Button(
-            barra_arquivo, text="Salvar cadastro...", command=self._salvar_cadastro, bootstyle="secondary-outline"
+            barra_arquivo, text="Salvar", command=self._salvar_cadastro, bootstyle="secondary-outline"
+        ).pack(side="left")
+        ttk.Button(
+            barra_arquivo, text="Salvar como...", command=self._salvar_cadastro_como, bootstyle="secondary-outline"
+        ).pack(side="left", padx=(6, 0))
+        self.var_aviso_nao_salvo = tk.StringVar(value="")
+        ttk.Label(
+            barra_arquivo, textvariable=self.var_aviso_nao_salvo, foreground="#a15c00", padding=(10, 0)
         ).pack(side="left")
 
         barra_gerar = ttk.Frame(self, padding=(8, 0, 8, 4))
@@ -169,6 +188,20 @@ class Aplicativo(ttk.Window):
             foreground="grey",
         ).pack(fill="x", padx=8, pady=(0, 4))
 
+        # Aviso bem visível — no topo, acima das abas — de que só alguém
+        # marcado na coluna "Sel." (Administrativo/Gestão) vai ganhar
+        # folha impressa; sem isso, trocar de aba e esquecer uma
+        # marcação faz o "Gerar Livro Ponto" imprimir só essa pessoa em
+        # vez do livro inteiro, sem nenhum aviso.
+        self.var_aviso_selecao_impressao = tk.StringVar(value="")
+        ttk.Label(
+            self,
+            textvariable=self.var_aviso_selecao_impressao,
+            foreground="#a15c00",
+            font=("", 10, "bold"),
+            padding=(8, 0),
+        ).pack(fill="x", padx=8, pady=(0, 4))
+
     def _construir_abas(self) -> None:
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
@@ -209,6 +242,7 @@ class Aplicativo(ttk.Window):
             ttk.Label(aba, text=rotulo).grid(row=r, column=c, sticky="e", padx=(0, 8), pady=4)
             var = tk.StringVar()
             ttk.Entry(aba, textvariable=var, width=largura).grid(row=r, column=c + 1, sticky="we", pady=4)
+            var.trace_add("write", self._ao_editar_campo_escola)
             return var
 
         self.var_nome = campo(0, 0, "Nome da escola", 60)
@@ -230,12 +264,14 @@ class Aplicativo(ttk.Window):
         ttk.Combobox(
             aba, textvariable=self.var_mes, values=MESES_CAP, state="readonly", width=14
         ).grid(row=7, column=1, sticky="w", pady=4)
+        self.var_mes.trace_add("write", self._ao_editar_campo_escola)
 
         ttk.Label(aba, text="Ano").grid(row=7, column=2, sticky="e", padx=(12, 8), pady=4)
         self.var_ano = tk.StringVar()
         ttk.Spinbox(aba, from_=2000, to=2100, textvariable=self.var_ano, width=8).grid(
             row=7, column=3, sticky="w", pady=4
         )
+        self.var_ano.trace_add("write", self._ao_editar_campo_escola)
 
         self.var_uf = campo(8, 0, "UF (feriados)", 6)
         self.var_cidade = campo(8, 2, "Cidade (assinatura dos termos)", 24)
@@ -510,23 +546,41 @@ class Aplicativo(ttk.Window):
     # Sincronização entre self.dados e os campos da aba Escola
     # ------------------------------------------------------------------
     def _atualizar_campos_escola(self) -> None:
-        e = self.dados.escola
-        self.var_nome.set(e.nome)
-        self.var_diretoria.set(e.diretoria_ensino)
-        self.var_endereco.set(e.endereco)
-        self.var_municipio.set(e.municipio)
-        self.var_telefone1.set(e.telefone1)
-        self.var_email.set(e.email)
-        self.var_codigo_ua.set(e.codigo_ua)
-        self.var_codigo_cie.set(e.codigo_cie)
-        self.var_mes.set(MESES_CAP[self.dados.mes - 1])
-        self.var_ano.set(str(self.dados.ano))
-        self.var_uf.set(self.dados.uf or "SP")
-        self.var_cidade.set(self.dados.cidade_assinatura or e.municipio)
-        self.var_diretor.set(self.dados.diretor_nome)
-        self.var_rotulo_assinatura.set(self.dados.rotulo_assinatura)
+        # _carregando trava o aviso de "dados não salvos" e a validação de
+        # _sincronizar_escola: popular os campos a partir de self.dados
+        # dispara a trace de cada StringVar (_ao_editar_campo_escola) —
+        # sem essa trava, cada .set() abaixo chamaria _sincronizar_escola
+        # no meio da própria atualização, sincronizando de volta campos
+        # que ainda não tinham sido atualizados (valor antigo) por cima
+        # de self.dados, além de marcar "alterado" um carregamento normal.
+        self._carregando = True
+        try:
+            e = self.dados.escola
+            self.var_nome.set(e.nome)
+            self.var_diretoria.set(e.diretoria_ensino)
+            self.var_endereco.set(e.endereco)
+            self.var_municipio.set(e.municipio)
+            self.var_telefone1.set(e.telefone1)
+            self.var_email.set(e.email)
+            self.var_codigo_ua.set(e.codigo_ua)
+            self.var_codigo_cie.set(e.codigo_cie)
+            self.var_mes.set(MESES_CAP[self.dados.mes - 1])
+            self.var_ano.set(str(self.dados.ano))
+            self.var_uf.set(self.dados.uf or "SP")
+            self.var_cidade.set(self.dados.cidade_assinatura or e.municipio)
+            self.var_diretor.set(self.dados.diretor_nome)
+            self.var_rotulo_assinatura.set(self.dados.rotulo_assinatura)
+        finally:
+            self._carregando = False
 
-    def _sincronizar_escola(self) -> None:
+    def _sincronizar_escola(self, mostrar_erro: bool = True) -> bool:
+        """Copia os campos da aba Escola pra self.dados. Retorna False (e,
+        por padrão, avisa com um messagebox) se o Ano não for um número —
+        os outros campos já foram sincronizados normalmente antes dessa
+        checagem. `mostrar_erro=False` é usado pela checagem de "dados não
+        salvos" (dispara a cada tecla, inclusive num Ano incompleto
+        digitado por enquanto — não faz sentido interromper com um erro
+        nesse caso; o ano simplesmente não é atualizado até ficar válido)."""
         e = self.dados.escola
         e.nome = self.var_nome.get().strip()
         e.diretoria_ensino = self.var_diretoria.get().strip()
@@ -538,14 +592,20 @@ class Aplicativo(ttk.Window):
         e.codigo_cie = self.var_codigo_cie.get().strip()
         if self.var_mes.get() in MESES_CAP:
             self.dados.mes = MESES_CAP.index(self.var_mes.get()) + 1
+        ano_digitado = self.var_ano.get().strip()
         try:
-            self.dados.ano = int(self.var_ano.get())
+            self.dados.ano = int(ano_digitado)
         except ValueError:
-            pass
+            if mostrar_erro:
+                messagebox.showerror(
+                    "Ano inválido", f"\"{ano_digitado}\" não é um ano válido.", parent=self
+                )
+            return False
         self.dados.uf = self.var_uf.get().strip() or "SP"
         self.dados.cidade_assinatura = self.var_cidade.get().strip()
         self.dados.diretor_nome = self.var_diretor.get().strip()
         self.dados.rotulo_assinatura = self.var_rotulo_assinatura.get().strip()
+        return True
 
     def _atualizar_tudo(self) -> None:
         self._atualizar_campos_escola()
@@ -556,19 +616,59 @@ class Aplicativo(ttk.Window):
         self.var_status.set(texto)
 
     # ------------------------------------------------------------------
+    # Controle de "dados não salvos"
+    # ------------------------------------------------------------------
+    def _ao_editar_campo_escola(self, *_args: object) -> None:
+        if not self._carregando:
+            self._atualizar_aviso_dados_nao_salvos()
+
+    def _dados_sujos(self) -> bool:
+        """Verdadeiro se algo mudou desde o último salvar/abrir/novo.
+        Sincroniza a aba Escola primeiro — os campos de texto só viram
+        self.dados de fato nesse momento (as outras abas já escrevem
+        direto em self.dados a cada ação, sem esperar salvar)."""
+        if self._dados_no_ultimo_save is None:
+            return False
+        self._sincronizar_escola(mostrar_erro=False)
+        return self.dados != self._dados_no_ultimo_save
+
+    def _marcar_estado_salvo(self) -> None:
+        self._dados_no_ultimo_save = copy.deepcopy(self.dados)
+        self._atualizar_aviso_dados_nao_salvos()
+
+    def _atualizar_aviso_dados_nao_salvos(self) -> None:
+        self.var_aviso_nao_salvo.set("⚠ Dados não salvos" if self._dados_sujos() else "")
+
+    def _confirmar_descarte_se_sujo(self, acao: str) -> bool:
+        """Pergunta antes de descartar alterações não salvas — usado
+        antes de "Novo", "Abrir" e ao fechar a janela."""
+        if not self._dados_sujos():
+            return True
+        return messagebox.askyesno(
+            "Dados não salvos",
+            f"Existem alterações não salvas. Deseja {acao} mesmo assim?",
+            parent=self,
+        )
+
+    def _ao_fechar(self) -> None:
+        if self._confirmar_descarte_se_sujo("fechar o programa"):
+            self.destroy()
+
+    # ------------------------------------------------------------------
     # Arquivo: novo / abrir / salvar / gerar PDF
     # ------------------------------------------------------------------
     def _novo(self) -> None:
-        if not messagebox.askyesno(
-            "Começar do zero", "Os dados não salvos serão perdidos. Continuar?", parent=self
-        ):
+        if not self._confirmar_descarte_se_sujo("começar um cadastro novo"):
             return
         self.dados = _config_vazio()
         self.caminho_atual = None
         self._atualizar_tudo()
+        self._marcar_estado_salvo()
         self._status("Novo cadastro.")
 
     def _abrir(self) -> None:
+        if not self._confirmar_descarte_se_sujo("abrir outro arquivo"):
+            return
         caminho = filedialog.askopenfilename(
             title="Abrir planilha",
             filetypes=[
@@ -591,15 +691,41 @@ class Aplicativo(ttk.Window):
         self.dados = novo
         self.caminho_atual = caminho
         self._atualizar_tudo()
+        self._marcar_estado_salvo()
         self._status(f"Carregado: {len(novo.pessoas)} pessoa(s) de {Path(caminho).name}")
 
     def _salvar_cadastro(self) -> None:
-        self._sincronizar_escola()
+        """Salva no arquivo já aberto (self.caminho_atual), sem perguntar
+        onde — é o "Salvar" de qualquer editor. Se ainda não existe um
+        arquivo (cadastro novo, nunca salvo), cai pro mesmo fluxo do
+        "Salvar como", porque nesse caso tem que perguntar onde salvar
+        na primeira vez de qualquer jeito."""
+        if not self.caminho_atual:
+            self._salvar_cadastro_como()
+            return
+        if not self._sincronizar_escola():
+            return
+        try:
+            salvar_modelo(self.dados, self.caminho_atual)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Erro ao salvar", str(exc), parent=self)
+            return
+        self._marcar_estado_salvo()
+        self._status(f"Cadastro salvo em {self.caminho_atual}")
+
+    def _salvar_cadastro_como(self) -> None:
+        """Sempre pergunta onde salvar, mesmo já existindo um arquivo
+        aberto — pra criar uma cópia com outro nome/pasta sem sobrescrever
+        o original. Sugere a pasta e o nome do arquivo atual (se houver)
+        em vez de sempre cair na pasta padrão do Windows."""
+        if not self._sincronizar_escola():
+            return
         caminho = filedialog.asksaveasfilename(
-            title="Salvar cadastro",
+            title="Salvar cadastro como",
             defaultextension=".xlsx",
             filetypes=[("Planilha Excel", "*.xlsx")],
-            initialfile="modelo_livro_ponto.xlsx",
+            initialfile=Path(self.caminho_atual).name if self.caminho_atual else "modelo_livro_ponto.xlsx",
+            initialdir=str(Path(self.caminho_atual).parent) if self.caminho_atual else None,
         )
         if not caminho:
             return
@@ -609,11 +735,13 @@ class Aplicativo(ttk.Window):
             messagebox.showerror("Erro ao salvar", str(exc), parent=self)
             return
         self.caminho_atual = caminho
+        self._marcar_estado_salvo()
         self._status(f"Cadastro salvo em {caminho}")
         messagebox.showinfo("Cadastro salvo", f"Salvo em:\n{caminho}", parent=self)
 
     def _gerar_pdf(self) -> None:
-        self._sincronizar_escola()
+        if not self._sincronizar_escola():
+            return
 
         tipos_incluidos = set()
         if self.var_incluir_administrativos.get():
@@ -649,6 +777,25 @@ class Aplicativo(ttk.Window):
             )
             return
 
+        # Com alguém marcado na coluna "Sel." (Administrativo/Gestão), gera
+        # só a folha/consolidação dessas pessoas — pra reimprimir a de um
+        # servidor específico sem gerar o livro inteiro de novo. Como essa
+        # marcação sobrevive a troca de aba e pode passar despercebida,
+        # confirma antes de gerar — pra não imprimir "só uma folha" achando
+        # que ia sair o livro inteiro.
+        pessoas_selecionadas = self._pessoas_selecionadas_impressao or None
+        if pessoas_selecionadas:
+            n = len(pessoas_selecionadas)
+            plural = "servidor" if n == 1 else "servidores"
+            if not messagebox.askyesno(
+                "Impressão avulsa",
+                f"{n} {plural} marcado(s) na coluna \"Sel.\" — isso vai gerar só a "
+                "folha/consolidação dele(s), não o livro inteiro.\n\n"
+                "Continuar assim mesmo?",
+                parent=self,
+            ):
+                return
+
         sufixo = "_".join(s for t, s in _SUFIXO_ARQUIVO_TIPO if t in tipos_incluidos)
         base = f"livro_ponto_{sufixo}" if sufixo else "livro_ponto"
         nome_sugerido = f"{base}_{self.dados.mes:02d}_{self.dados.ano}.pdf"
@@ -660,10 +807,6 @@ class Aplicativo(ttk.Window):
         )
         if not caminho:
             return
-        # Com alguém marcado na coluna "Sel." (Administrativo/Gestão), gera
-        # só a folha/consolidação dessas pessoas — pra reimprimir a de um
-        # servidor específico sem gerar o livro inteiro de novo.
-        pessoas_selecionadas = self._pessoas_selecionadas_impressao or None
 
         try:
             # O botão "Gerar Livro Ponto" não inclui mais os termos de
@@ -690,7 +833,8 @@ class Aplicativo(ttk.Window):
             _abrir_no_sistema(caminho)
 
     def _gerar_termos(self) -> None:
-        self._sincronizar_escola()
+        if not self._sincronizar_escola():
+            return
 
         tipos_incluidos = set()
         if self.var_termo_administrativo.get():
@@ -798,12 +942,27 @@ class Aplicativo(ttk.Window):
         else:
             self._pessoas_selecionadas_impressao.add(chave)
         tree.set(linha, "sel", "☑" if chave in self._pessoas_selecionadas_impressao else "☐")
+        self._atualizar_aviso_selecao_impressao()
+
+    def _atualizar_aviso_selecao_impressao(self) -> None:
+        n = len(self._pessoas_selecionadas_impressao)
+        if n == 1:
+            texto = "🔶 1 servidor selecionado — \"Gerar Livro Ponto\" vai imprimir só a folha/consolidação dele."
+        elif n > 1:
+            texto = (
+                f"🔶 {n} servidores selecionados — \"Gerar Livro Ponto\" vai imprimir só a "
+                "folha/consolidação deles."
+            )
+        else:
+            texto = ""
+        self.var_aviso_selecao_impressao.set(texto)
 
     def _atualizar_listas_pessoas(self) -> None:
         # Descarta marcações de gente que não existe mais no cadastro (ex.:
         # removida, ou substituída por uma edição — editar troca o objeto
         # Pessoa, então perde a marcação).
         self._pessoas_selecionadas_impressao &= {id(p) for p in self.dados.pessoas}
+        self._atualizar_aviso_selecao_impressao()
         self._atualizar_lista_pessoas_tipo(TipoServidor.ADMINISTRATIVO)
         self._atualizar_lista_pessoas_tipo(TipoServidor.GESTAO)
         # Férias e Licenças listam todo mundo (qualquer tipo) — precisam
@@ -822,6 +981,7 @@ class Aplicativo(ttk.Window):
         if dlg.resultado:
             self.dados.pessoas.append(dlg.resultado)
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Servidor adicionado.")
 
     def _editar_pessoa_selecionada_tipo(self, tipo: TipoServidor) -> None:
@@ -835,6 +995,7 @@ class Aplicativo(ttk.Window):
             # o tipo pode ter mudado no diálogo (ex.: promovido a Gestão) —
             # atualiza as duas abas pra pessoa aparecer na certa.
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Servidor atualizado.")
 
     def _remover_pessoa_selecionada_tipo(self, tipo: TipoServidor) -> None:
@@ -846,6 +1007,7 @@ class Aplicativo(ttk.Window):
         if messagebox.askyesno("Remover servidor", f"Remover {pessoa.nome}?", parent=self):
             del self.dados.pessoas[idx]
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Servidor removido.")
 
     # ------------------------------------------------------------------
@@ -867,6 +1029,7 @@ class Aplicativo(ttk.Window):
         if dlg.resultado:
             self.dados.dias_excecao.append(dlg.resultado)
             self._atualizar_lista_excecoes()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Exceção adicionada.")
 
     def _editar_excecao_selecionada(self) -> None:
@@ -878,6 +1041,7 @@ class Aplicativo(ttk.Window):
         if dlg.resultado:
             self.dados.dias_excecao[idx] = dlg.resultado
             self._atualizar_lista_excecoes()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Exceção atualizada.")
 
     def _remover_excecao_selecionada(self) -> None:
@@ -888,6 +1052,7 @@ class Aplicativo(ttk.Window):
         if messagebox.askyesno("Remover exceção", "Remover esta exceção de calendário?", parent=self):
             del self.dados.dias_excecao[idx]
             self._atualizar_lista_excecoes()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Exceção removida.")
 
     # ------------------------------------------------------------------
@@ -920,6 +1085,7 @@ class Aplicativo(ttk.Window):
             self.dados.pessoas[idx].ferias_inicio = ferias_inicio
             self.dados.pessoas[idx].ferias_fim = ferias_fim
             self._atualizar_lista_ferias()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Período de férias atualizado.")
 
     # ------------------------------------------------------------------
@@ -965,6 +1131,7 @@ class Aplicativo(ttk.Window):
             self.dados.pessoas[idx].licencas.append(dlg.resultado)
             self._atualizar_lista_licencas()
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Licença adicionada.")
 
     def _editar_licenca_selecionada(self) -> None:
@@ -979,6 +1146,7 @@ class Aplicativo(ttk.Window):
             pessoa.licencas[lic_idx] = dlg.resultado
             self._atualizar_lista_licencas()
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Licença atualizada.")
 
     def _remover_licenca_selecionada(self) -> None:
@@ -992,6 +1160,7 @@ class Aplicativo(ttk.Window):
             del pessoa.licencas[lic_idx]
             self._atualizar_lista_licencas()
             self._atualizar_listas_pessoas()
+            self._atualizar_aviso_dados_nao_salvos()
             self._status("Licença removida.")
 
 

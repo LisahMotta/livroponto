@@ -4,6 +4,7 @@ display utilizável (defina DISPLAY, ou rode sob xvfb-run)."""
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -164,6 +165,24 @@ def test_rotulo_de_assinatura_sincroniza_com_o_modelo(app):
     assert app.var_rotulo_assinatura.get() == "Outro Rótulo"
 
 
+def test_sincronizar_escola_com_ano_invalido_avisa_e_retorna_falso(app, monkeypatch):
+    app.var_ano.set("não é um ano")
+    erros = []
+    monkeypatch.setattr(messagebox, "showerror", lambda titulo, msg, **k: erros.append(msg))
+
+    assert app._sincronizar_escola() is False
+    assert erros
+
+    assert app._sincronizar_escola(mostrar_erro=False) is False
+    assert len(erros) == 1  # não avisou de novo
+
+
+def test_sincronizar_escola_com_ano_valido_retorna_verdadeiro(app):
+    app.var_ano.set("2026")
+    assert app._sincronizar_escola() is True
+    assert app.dados.ano == 2026
+
+
 def test_salvar_e_reabrir_cadastro_xlsx(app, tmp_path):
     app.dados.pessoas.append(_pessoa_exemplo())
     app.dados.pessoas.append(_pessoa_exemplo(nome="Ciclana Teste", tipo=TipoServidor.DOCENTE, disciplinas="HISTÓRIA"))
@@ -177,6 +196,86 @@ def test_salvar_e_reabrir_cadastro_xlsx(app, tmp_path):
     recarregado = ler_modelo(caminho)
     assert recarregado.escola.nome == "EE Exemplo Fictício"
     assert len(recarregado.pessoas) == 2
+
+
+def test_app_comeca_sem_aviso_de_dados_nao_salvos(app):
+    assert app.var_aviso_nao_salvo.get() == ""
+    assert app._dados_sujos() is False
+
+
+def test_editar_campo_da_aba_escola_mostra_aviso_de_dados_nao_salvos(app):
+    app.var_nome.set("EE Exemplo Fictício")
+    assert app._dados_sujos() is True
+    assert app.var_aviso_nao_salvo.get() == "⚠ Dados não salvos"
+
+
+def test_adicionar_servidor_mostra_aviso_de_dados_nao_salvos(app):
+    app.dados.pessoas.append(_pessoa_exemplo())
+    app._atualizar_listas_pessoas()
+    app._atualizar_aviso_dados_nao_salvos()
+    assert app.var_aviso_nao_salvo.get() == "⚠ Dados não salvos"
+
+
+def test_salvar_cadastro_limpa_o_aviso_de_dados_nao_salvos(app, tmp_path, monkeypatch):
+    app.var_nome.set("EE Exemplo Fictício")
+    assert app._dados_sujos() is True
+
+    caminho = tmp_path / "cadastro.xlsx"
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: str(caminho))
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    app._salvar_cadastro()  # sem caminho_atual ainda -> cai pro "salvar como"
+
+    assert app.caminho_atual == str(caminho)
+    assert app._dados_sujos() is False
+    assert app.var_aviso_nao_salvo.get() == ""
+
+
+def test_salvar_cadastro_com_caminho_atual_salva_direto_sem_dialogo(app, tmp_path, monkeypatch):
+    app.caminho_atual = str(tmp_path / "existente.xlsx")
+    app.var_nome.set("EE Exemplo Fictício")
+
+    chamou_dialogo = []
+    monkeypatch.setattr(
+        filedialog, "asksaveasfilename", lambda **kw: chamou_dialogo.append(1) or "outro.xlsx"
+    )
+
+    app._salvar_cadastro()
+
+    assert not chamou_dialogo
+    assert Path(app.caminho_atual).exists()
+    assert app._dados_sujos() is False
+
+
+def test_salvar_cadastro_como_sugere_pasta_e_nome_do_arquivo_atual(app, tmp_path, monkeypatch):
+    app.caminho_atual = str(tmp_path / "meu_cadastro.xlsx")
+
+    sugestoes = {}
+
+    def _fake_asksaveasfilename(**kw):
+        sugestoes.update(kw)
+        return str(tmp_path / "copia.xlsx")
+
+    monkeypatch.setattr(filedialog, "asksaveasfilename", _fake_asksaveasfilename)
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    app._salvar_cadastro_como()
+
+    assert sugestoes["initialfile"] == "meu_cadastro.xlsx"
+    assert sugestoes["initialdir"] == str(tmp_path)
+    assert app.caminho_atual == str(tmp_path / "copia.xlsx")
+
+
+def test_novo_pergunta_antes_de_descartar_so_quando_ha_alteracao(app, monkeypatch):
+    perguntou = []
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: perguntou.append(1) or True)
+
+    app._novo()
+    assert not perguntou  # nada mudou ainda, não precisa perguntar
+
+    app.var_nome.set("EE Exemplo Fictício")
+    app._novo()
+    assert perguntou  # tinha alteração pendente, perguntou antes de descartar
 
 
 def test_gerar_pdf_a_partir_dos_dados_da_janela(app, tmp_path):
@@ -404,6 +503,53 @@ def test_remover_servidor_marcado_limpa_a_selecao_de_impressao(app):
     assert app._pessoas_selecionadas_impressao == set()
 
 
+def test_aviso_de_selecao_para_impressao_mostra_contagem_no_topo(app):
+    """Pedido do usuário: um aviso no topo do app quando só alguns
+    servidores estiverem marcados pra impressão avulsa, pra não passar
+    despercebido ao trocar de aba e gerar o livro achando que sairia
+    tudo."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Beltrano", rg="2.222.222-2"))
+    app._atualizar_listas_pessoas()
+    assert app.var_aviso_selecao_impressao.get() == ""
+
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
+    assert "1 servidor selecionado" in app.var_aviso_selecao_impressao.get()
+
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "1")
+    assert "2 servidores selecionados" in app.var_aviso_selecao_impressao.get()
+
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "1")
+    assert app.var_aviso_selecao_impressao.get() == ""
+
+
+def test_gerar_pdf_pelo_botao_confirma_antes_de_imprimir_so_os_selecionados(app, monkeypatch):
+    """Pedido do usuário: avisar antes de imprimir quando só uma linha
+    estiver marcada, em vez do livro inteiro — pra não ser um erro
+    silencioso."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.var_nome.set("EE Exemplo Fictício")
+    app._pessoas_selecionadas_impressao.add(id(app.dados.pessoas[0]))
+
+    perguntas = []
+
+    def _askyesno(titulo, msg, **k):
+        perguntas.append(titulo)
+        return False  # recusa continuar
+
+    monkeypatch.setattr(messagebox, "askyesno", _askyesno)
+    chamou_dialogo_salvar = []
+    monkeypatch.setattr(
+        filedialog, "asksaveasfilename", lambda **kw: chamou_dialogo_salvar.append(1) or "saida.pdf"
+    )
+
+    app._gerar_pdf()
+
+    assert perguntas == ["Impressão avulsa"]
+    assert not chamou_dialogo_salvar  # nem chegou a perguntar onde salvar
+
+
 def test_gerar_pdf_pelo_botao_repassa_pessoas_selecionadas_para_impressao(app, monkeypatch):
     app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
     app.var_nome.set("EE Exemplo Fictício")
@@ -420,7 +566,9 @@ def test_gerar_pdf_pelo_botao_repassa_pessoas_selecionadas_para_impressao(app, m
 
     monkeypatch.setattr(app_mod, "gerar_pdf", _gerar_pdf_espiao)
     monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
-    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+    # confirma a impressão avulsa (tem gente marcada em "Sel."), mas recusa
+    # o "abrir agora?" do final — dois askyesno diferentes na mesma chamada.
+    monkeypatch.setattr(messagebox, "askyesno", lambda titulo, *a, **k: titulo == "Impressão avulsa")
 
     app._gerar_pdf()
 
