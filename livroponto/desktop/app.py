@@ -176,7 +176,28 @@ class Aplicativo(ttk.Window):
             barra_incluir, text="Trio gestor", variable=self.var_incluir_gestao, bootstyle="round-toggle"
         ).pack(side="left")
 
-        ttk.Label(
+        # Aviso bem visível — no topo, acima das abas — de que só alguém
+        # marcado na coluna "Sel." (Administrativo/Gestão) vai ganhar
+        # folha impressa; sem isso, trocar de aba e esquecer uma marcação
+        # faz o "Gerar Livro Ponto" imprimir só essa pessoa em vez do
+        # livro inteiro, sem nenhum aviso. A linha inteira só aparece
+        # quando há alguém marcado — pack()/pack_forget() em
+        # _atualizar_aviso_selecao (usa before= pra sempre reinserir na
+        # mesma posição, já que pack_forget()+pack() de novo iria parar
+        # no fim da pilha de widgets empacotados, não onde estava antes).
+        self.barra_selecao = ttk.Frame(self, padding=(8, 0, 8, 4))
+        self.var_aviso_selecao = tk.StringVar(value="")
+        ttk.Label(self.barra_selecao, textvariable=self.var_aviso_selecao, bootstyle="warning").pack(
+            side="left"
+        )
+        ttk.Button(
+            self.barra_selecao,
+            text="Limpar seleção",
+            command=self._limpar_selecao_impressao,
+            bootstyle="warning-link",
+        ).pack(side="left", padx=(8, 0))
+
+        self._aviso_impressao = ttk.Label(
             self,
             text=(
                 "Gera só as folhas de ponto/frequência, frente e verso — desmarque "
@@ -186,21 +207,8 @@ class Aplicativo(ttk.Window):
             ),
             wraplength=920,
             foreground="grey",
-        ).pack(fill="x", padx=8, pady=(0, 4))
-
-        # Aviso bem visível — no topo, acima das abas — de que só alguém
-        # marcado na coluna "Sel." (Administrativo/Gestão) vai ganhar
-        # folha impressa; sem isso, trocar de aba e esquecer uma
-        # marcação faz o "Gerar Livro Ponto" imprimir só essa pessoa em
-        # vez do livro inteiro, sem nenhum aviso.
-        self.var_aviso_selecao_impressao = tk.StringVar(value="")
-        ttk.Label(
-            self,
-            textvariable=self.var_aviso_selecao_impressao,
-            foreground="#a15c00",
-            font=("", 10, "bold"),
-            padding=(8, 0),
-        ).pack(fill="x", padx=8, pady=(0, 4))
+        )
+        self._aviso_impressao.pack(fill="x", padx=8, pady=(0, 4))
 
     def _construir_abas(self) -> None:
         notebook = ttk.Notebook(self)
@@ -651,8 +659,17 @@ class Aplicativo(ttk.Window):
         )
 
     def _ao_fechar(self) -> None:
-        if self._confirmar_descarte_se_sujo("fechar o programa"):
-            self.destroy()
+        resposta = messagebox.askyesnocancel("Sair", "Deseja salvar o cadastro antes de sair?", parent=self)
+        if resposta is None:
+            return
+        if resposta:
+            self._salvar_cadastro()
+            if self.caminho_atual is None:
+                # Cadastro novo, nunca salvo: _salvar_cadastro caiu pro
+                # "Salvar como" e o usuário cancelou o diálogo — não fecha
+                # a janela, senão perde os dados achando que salvou.
+                return
+        self.destroy()
 
     # ------------------------------------------------------------------
     # Arquivo: novo / abrir / salvar / gerar PDF
@@ -942,27 +959,27 @@ class Aplicativo(ttk.Window):
         else:
             self._pessoas_selecionadas_impressao.add(chave)
         tree.set(linha, "sel", "☑" if chave in self._pessoas_selecionadas_impressao else "☐")
-        self._atualizar_aviso_selecao_impressao()
+        self._atualizar_aviso_selecao()
 
-    def _atualizar_aviso_selecao_impressao(self) -> None:
+    def _atualizar_aviso_selecao(self) -> None:
         n = len(self._pessoas_selecionadas_impressao)
-        if n == 1:
-            texto = "🔶 1 servidor selecionado — \"Gerar Livro Ponto\" vai imprimir só a folha/consolidação dele."
-        elif n > 1:
-            texto = (
-                f"🔶 {n} servidores selecionados — \"Gerar Livro Ponto\" vai imprimir só a "
-                "folha/consolidação deles."
-            )
+        if n > 0:
+            self.var_aviso_selecao.set(f"⚠ {n} servidor(es) marcado(s) para impressão seletiva")
+            self.barra_selecao.pack(fill="x", padx=8, pady=(0, 4), before=self._aviso_impressao)
         else:
-            texto = ""
-        self.var_aviso_selecao_impressao.set(texto)
+            self.barra_selecao.pack_forget()
+
+    def _limpar_selecao_impressao(self) -> None:
+        self._pessoas_selecionadas_impressao.clear()
+        self._atualizar_listas_pessoas()
+        self._atualizar_aviso_selecao()
 
     def _atualizar_listas_pessoas(self) -> None:
         # Descarta marcações de gente que não existe mais no cadastro (ex.:
         # removida, ou substituída por uma edição — editar troca o objeto
         # Pessoa, então perde a marcação).
         self._pessoas_selecionadas_impressao &= {id(p) for p in self.dados.pessoas}
-        self._atualizar_aviso_selecao_impressao()
+        self._atualizar_aviso_selecao()
         self._atualizar_lista_pessoas_tipo(TipoServidor.ADMINISTRATIVO)
         self._atualizar_lista_pessoas_tipo(TipoServidor.GESTAO)
         # Férias e Licenças listam todo mundo (qualquer tipo) — precisam

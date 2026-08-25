@@ -503,25 +503,47 @@ def test_remover_servidor_marcado_limpa_a_selecao_de_impressao(app):
     assert app._pessoas_selecionadas_impressao == set()
 
 
-def test_aviso_de_selecao_para_impressao_mostra_contagem_no_topo(app):
+def test_aviso_de_selecao_para_impressao_mostra_contagem_e_some_quando_vazia(app):
     """Pedido do usuário: um aviso no topo do app quando só alguns
     servidores estiverem marcados pra impressão avulsa, pra não passar
     despercebido ao trocar de aba e gerar o livro achando que sairia
-    tudo."""
+    tudo — a linha inteira (aviso + botão "Limpar seleção") só aparece
+    quando há alguém marcado."""
     app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
     app.dados.pessoas.append(_pessoa_exemplo(nome="Beltrano", rg="2.222.222-2"))
     app._atualizar_listas_pessoas()
-    assert app.var_aviso_selecao_impressao.get() == ""
+    app.update_idletasks()
+    assert not app.barra_selecao.winfo_ismapped()
 
     app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
-    assert "1 servidor selecionado" in app.var_aviso_selecao_impressao.get()
+    app.update_idletasks()
+    assert app.barra_selecao.winfo_ismapped()
+    assert "1 servidor(es) marcado(s)" in app.var_aviso_selecao.get()
 
     app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "1")
-    assert "2 servidores selecionados" in app.var_aviso_selecao_impressao.get()
+    assert "2 servidor(es) marcado(s)" in app.var_aviso_selecao.get()
 
     app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
     app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "1")
-    assert app.var_aviso_selecao_impressao.get() == ""
+    app.update_idletasks()
+    assert not app.barra_selecao.winfo_ismapped()
+
+
+def test_limpar_selecao_desmarca_todo_mundo_e_esconde_o_aviso(app):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Beltrano", rg="2.222.222-2"))
+    app._atualizar_listas_pessoas()
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "1")
+    assert len(app._pessoas_selecionadas_impressao) == 2
+
+    app._limpar_selecao_impressao()
+    app.update_idletasks()
+
+    assert app._pessoas_selecionadas_impressao == set()
+    assert not app.barra_selecao.winfo_ismapped()
+    assert app.tree_administrativo.item("0", "values")[0] == "☐"
+    assert app.tree_administrativo.item("1", "values")[0] == "☐"
 
 
 def test_gerar_pdf_pelo_botao_confirma_antes_de_imprimir_so_os_selecionados(app, monkeypatch):
