@@ -84,6 +84,15 @@ class Aplicativo(ttk.Window):
         self.dados: LivroPontoConfig = _config_vazio()
         self.caminho_atual: str | None = None
         self._indices_combo_licenca: list[int] = []
+        # Marcados na coluna "Sel." das listas Administrativo/Gestão —
+        # guarda id(pessoa) (identidade do objeto), não o índice na lista,
+        # porque remover alguém desloca os índices de quem vem depois (id
+        # continua válido; editar troca o objeto, então perde a marcação —
+        # aceitável, já que editar não é o momento de imprimir). Vazio =
+        # comportamento normal (marca ninguém em especial, imprime todo
+        # mundo dos tipos marcados em "Incluir"); com alguém marcado, o
+        # botão "Gerar Livro Ponto" imprime só quem estiver marcado aqui.
+        self._pessoas_selecionadas_impressao: set[int] = set()
 
         self._construir_barra_ferramentas()
         self._construir_abas()
@@ -269,8 +278,21 @@ class Aplicativo(ttk.Window):
             barra, text="(duplo-clique numa linha também edita)", foreground="grey"
         ).pack(side="left", padx=(8, 0))
 
-        colunas = ("nome", "rg", "cargo", "jornada", "ponto", "observacoes")
+        ttk.Label(
+            aba,
+            text=(
+                "Marque \"Sel.\" pra imprimir só a folha e a consolidação de "
+                "servidores específicos no \"Gerar Livro Ponto\" — com alguém "
+                "marcado ali (em qualquer aba), gera só quem estiver marcado, "
+                "mantendo a página de cada um igual à do livro completo."
+            ),
+            wraplength=920,
+            foreground="grey",
+        ).pack(fill="x", padx=8, pady=(0, 4))
+
+        colunas = ("sel", "nome", "rg", "cargo", "jornada", "ponto", "observacoes")
         titulos = {
+            "sel": "Sel.",
             "nome": "Nome",
             "rg": "RG",
             "cargo": "Cargo/Função",
@@ -278,7 +300,15 @@ class Aplicativo(ttk.Window):
             "ponto": "Ponto?",
             "observacoes": "Observações",
         }
-        larguras = {"nome": 220, "rg": 110, "cargo": 220, "jornada": 70, "ponto": 60, "observacoes": 260}
+        larguras = {
+            "sel": 40,
+            "nome": 220,
+            "rg": 110,
+            "cargo": 220,
+            "jornada": 70,
+            "ponto": 60,
+            "observacoes": 260,
+        }
 
         container = ttk.Frame(aba)
         container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -291,6 +321,7 @@ class Aplicativo(ttk.Window):
         tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         tree.bind("<Double-1>", lambda _e: self._editar_pessoa_selecionada_tipo(tipo))
+        tree.bind("<Button-1>", lambda e, t=tree: self._alternar_selecao_impressao(e, t))
         return tree
 
     def _construir_aba_excecoes(self, aba: ttk.Frame) -> None:
@@ -629,6 +660,11 @@ class Aplicativo(ttk.Window):
         )
         if not caminho:
             return
+        # Com alguém marcado na coluna "Sel." (Administrativo/Gestão), gera
+        # só a folha/consolidação dessas pessoas — pra reimprimir a de um
+        # servidor específico sem gerar o livro inteiro de novo.
+        pessoas_selecionadas = self._pessoas_selecionadas_impressao or None
+
         try:
             # O botão "Gerar Livro Ponto" não inclui mais os termos de
             # abertura/encerramento — eles têm aba própria (Termos). Folha
@@ -641,11 +677,15 @@ class Aplicativo(ttk.Window):
                 incluir_termos=False,
                 imprimir_folha=imprimir_folha,
                 imprimir_consolidacao=imprimir_consolidacao,
+                pessoas_selecionadas=pessoas_selecionadas,
             )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Erro ao gerar PDF", str(exc), parent=self)
             return
-        self._status(f"PDF gerado em {caminho}")
+        if pessoas_selecionadas:
+            self._status(f"PDF gerado em {caminho} (somente {len(pessoas_selecionadas)} servidor(es) marcado(s))")
+        else:
+            self._status(f"PDF gerado em {caminho}")
         if messagebox.askyesno("PDF gerado", f"Gerado em:\n{caminho}\n\nAbrir agora?", parent=self):
             _abrir_no_sistema(caminho)
 
@@ -715,11 +755,13 @@ class Aplicativo(ttk.Window):
         )
         for i, p in itens:
             jornada = "" if p.jornada_semanal is None else f"{p.jornada_semanal:g}"
+            marcado = "☑" if id(p) in self._pessoas_selecionadas_impressao else "☐"
             tree.insert(
                 "",
                 "end",
                 iid=str(i),
                 values=(
+                    marcado,
                     p.nome,
                     formatar_rg(p.rg),
                     p.cargo,
@@ -729,7 +771,32 @@ class Aplicativo(ttk.Window):
                 ),
             )
 
+    def _alternar_selecao_impressao(self, event: tk.Event, tree: ttk.Treeview) -> None:
+        """Clique na coluna "Sel." de uma linha marca/desmarca aquele
+        servidor pra impressão avulsa (só a folha/consolidação dele)."""
+        if tree.identify_region(event.x, event.y) != "cell" or tree.identify_column(event.x) != "#1":
+            return
+        linha = tree.identify_row(event.y)
+        if linha:
+            self._alternar_selecao_impressao_da_linha(tree, linha)
+
+    def _alternar_selecao_impressao_da_linha(self, tree: ttk.Treeview, linha: str) -> None:
+        """A marcação/desmarcação em si (separada da resolução de qual
+        linha foi clicada) — só precisa do iid, então dá pra testar sem
+        depender da geometria real do clique na tela."""
+        pessoa = self.dados.pessoas[int(linha)]
+        chave = id(pessoa)
+        if chave in self._pessoas_selecionadas_impressao:
+            self._pessoas_selecionadas_impressao.discard(chave)
+        else:
+            self._pessoas_selecionadas_impressao.add(chave)
+        tree.set(linha, "sel", "☑" if chave in self._pessoas_selecionadas_impressao else "☐")
+
     def _atualizar_listas_pessoas(self) -> None:
+        # Descarta marcações de gente que não existe mais no cadastro (ex.:
+        # removida, ou substituída por uma edição — editar troca o objeto
+        # Pessoa, então perde a marcação).
+        self._pessoas_selecionadas_impressao &= {id(p) for p in self.dados.pessoas}
         self._atualizar_lista_pessoas_tipo(TipoServidor.ADMINISTRATIVO)
         self._atualizar_lista_pessoas_tipo(TipoServidor.GESTAO)
         # Férias e Licenças listam todo mundo (qualquer tipo) — precisam

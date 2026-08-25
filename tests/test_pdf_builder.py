@@ -215,6 +215,28 @@ def _textos(elementos) -> list[str]:
     return [e.text for e in elementos if isinstance(e, Paragraph)]
 
 
+def _textos_profundo(obj) -> list[str]:
+    """Como `_textos`, mas desce em Table/KeepTogether aninhados — usada
+    quando o texto procurado está dentro de uma célula de tabela (ex.:
+    nome do servidor, número da página), não num Paragraph solto."""
+    if isinstance(obj, Paragraph):
+        return [obj.text]
+    if isinstance(obj, Table):
+        textos = []
+        for linha in obj._cellvalues:
+            for celula in linha:
+                textos.extend(_textos_profundo(celula))
+        return textos
+    if isinstance(obj, KeepTogether):
+        return _textos_profundo(obj._content)
+    if isinstance(obj, (list, tuple)):
+        textos = []
+        for item in obj:
+            textos.extend(_textos_profundo(item))
+        return textos
+    return []
+
+
 def test_termo_assina_com_nome_do_diretor_cadastrado():
     """O nome de quem assina "Direção da Unidade Escolar" vem do campo
     `diretor_nome` (aba Escola) — não mais de uma busca no cadastro da
@@ -538,6 +560,54 @@ def test_gerar_pdf_sem_termos_gera_arquivo(tmp_path):
     resultado = gerar_pdf(_config_exemplo(), caminho, incluir_termos=False)
     assert resultado.exists()
     assert resultado.stat().st_size > 1000
+
+
+def test_bloco_tipo_pessoas_selecionadas_imprime_so_quem_esta_marcado_mantendo_pagina():
+    """Pedido do usuário: marcar um servidor específico na lista deve
+    imprimir só a folha/consolidação dele, mas com o número de página
+    igual ao que ele tem no livro completo (não renumerado a partir de
+    1 pra quem sobrou)."""
+    config = _config_exemplo()  # já tem "Servidor Fictício Um" (rg 00.000.000-0) -> página 1
+    segundo = Pessoa(nome="Segundo Fictício", tipo=TipoServidor.ADMINISTRATIVO, rg="99.999.999-9")
+    config.pessoas.append(segundo)  # rg maior -> página 2 na ordenação por RG
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf)
+
+    elementos = _bloco_tipo(
+        config,
+        TipoServidor.ADMINISTRATIVO,
+        dias,
+        _styles(),
+        incluir_termos=False,
+        pessoas_selecionadas={id(segundo)},
+    )
+    textos = _textos_profundo(elementos)
+    assert any("Segundo Fictício" in t for t in textos)
+    assert not any("Servidor Fictício Um" in t for t in textos)
+    assert any("PAG: 2" in t for t in textos)
+
+
+def test_bloco_tipo_pessoas_selecionadas_vazio_nao_imprime_ninguem():
+    config = _config_exemplo()
+    dias = montar_calendario(config.ano, config.mes, uf=config.uf)
+    elementos = _bloco_tipo(
+        config, TipoServidor.ADMINISTRATIVO, dias, _styles(), incluir_termos=False, pessoas_selecionadas=set()
+    )
+    assert elementos == []
+
+
+def test_gerar_pdf_pessoas_selecionadas_gera_arquivo_menor_que_o_livro_completo(tmp_path):
+    config = _config_exemplo()
+    segundo = Pessoa(nome="Segundo Fictício", tipo=TipoServidor.ADMINISTRATIVO, rg="99.999.999-9")
+    config.pessoas.append(segundo)
+
+    completo = tmp_path / "completo.pdf"
+    gerar_pdf(config, completo, incluir_termos=False)
+
+    so_um = tmp_path / "so_um.pdf"
+    resultado = gerar_pdf(config, so_um, incluir_termos=False, pessoas_selecionadas={id(segundo)})
+
+    assert resultado.exists()
+    assert resultado.stat().st_size < completo.stat().st_size
 
 
 def test_bloco_tipo_gestao_usa_formato_folha_de_ponto_com_livro_proprio():

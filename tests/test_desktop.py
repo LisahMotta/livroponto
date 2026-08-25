@@ -86,8 +86,8 @@ def test_abas_administrativo_e_gestao_sao_separadas(app):
     app.dados.pessoas.append(_pessoa_exemplo(nome="Docente Teste", tipo=TipoServidor.DOCENTE))
     app._atualizar_listas_pessoas()
 
-    nomes_admin = [app.tree_administrativo.item(iid, "values")[0] for iid in app.tree_administrativo.get_children()]
-    nomes_gestao = [app.tree_gestao.item(iid, "values")[0] for iid in app.tree_gestao.get_children()]
+    nomes_admin = [app.tree_administrativo.item(iid, "values")[1] for iid in app.tree_administrativo.get_children()]
+    nomes_gestao = [app.tree_gestao.item(iid, "values")[1] for iid in app.tree_gestao.get_children()]
     assert nomes_admin == ["Administrativo Teste"]
     assert nomes_gestao == ["Diretora Teste"]
     assert not hasattr(app, "tree_docente")
@@ -104,7 +104,7 @@ def test_lista_pessoas_ordenada_por_rg(app):
     app._atualizar_listas_pessoas()
 
     linhas = app.tree_administrativo.get_children()
-    nomes_exibidos = [app.tree_administrativo.item(iid, "values")[0] for iid in linhas]
+    nomes_exibidos = [app.tree_administrativo.item(iid, "values")[1] for iid in linhas]
     assert nomes_exibidos == ["RG 9", "RG 15", "RG 30"]
 
     # a primeira linha exibida (RG 9) é o índice 1 na lista real
@@ -125,7 +125,7 @@ def test_editar_pessoa_muda_tipo_move_para_outra_aba(app):
     app._atualizar_listas_pessoas()
 
     assert len(app.tree_administrativo.get_children()) == 0
-    nomes_gestao = [app.tree_gestao.item(iid, "values")[0] for iid in app.tree_gestao.get_children()]
+    nomes_gestao = [app.tree_gestao.item(iid, "values")[1] for iid in app.tree_gestao.get_children()]
     assert nomes_gestao == ["Vai Virar Gestor"]
 
 
@@ -349,6 +349,83 @@ def test_gerar_pdf_pelo_botao_avisa_se_nenhuma_opcao_de_impressao_marcada(app, m
     assert not chamou_salvar
 
 
+def test_clique_na_coluna_sel_marca_e_desmarca_servidor_para_impressao(app):
+    """Pedido do usuário: uma caixa de seleção em frente ao nome do
+    servidor, pra imprimir só a folha/consolidação dele quando
+    necessário."""
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
+    app._atualizar_listas_pessoas()
+    pessoa = app.dados.pessoas[0]
+
+    assert app.tree_administrativo.item("0", "values")[0] == "☐"
+    assert id(pessoa) not in app._pessoas_selecionadas_impressao
+
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
+
+    assert id(pessoa) in app._pessoas_selecionadas_impressao
+    assert app.tree_administrativo.item("0", "values")[0] == "☑"
+
+    app._alternar_selecao_impressao_da_linha(app.tree_administrativo, "0")
+    assert id(pessoa) not in app._pessoas_selecionadas_impressao
+    assert app.tree_administrativo.item("0", "values")[0] == "☐"
+
+
+def test_remover_servidor_marcado_limpa_a_selecao_de_impressao(app):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano"))
+    app._atualizar_listas_pessoas()
+    pessoa = app.dados.pessoas[0]
+    app._pessoas_selecionadas_impressao.add(id(pessoa))
+
+    del app.dados.pessoas[0]
+    app._atualizar_listas_pessoas()
+
+    assert app._pessoas_selecionadas_impressao == set()
+
+
+def test_gerar_pdf_pelo_botao_repassa_pessoas_selecionadas_para_impressao(app, monkeypatch):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.var_nome.set("EE Exemplo Fictício")
+    pessoa = app.dados.pessoas[0]
+    app._pessoas_selecionadas_impressao.add(id(pessoa))
+
+    chamadas = []
+
+    def _gerar_pdf_espiao(config, caminho, **kwargs):
+        chamadas.append(kwargs)
+        return caminho
+
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "gerar_pdf", _gerar_pdf_espiao)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert chamadas[0]["pessoas_selecionadas"] == {id(pessoa)}
+
+
+def test_gerar_pdf_pelo_botao_sem_ninguem_marcado_no_manda_filtro_de_pessoas(app, monkeypatch):
+    app.dados.pessoas.append(_pessoa_exemplo(nome="Administrativo Teste"))
+    app.var_nome.set("EE Exemplo Fictício")
+
+    chamadas = []
+
+    def _gerar_pdf_espiao(config, caminho, **kwargs):
+        chamadas.append(kwargs)
+        return caminho
+
+    import livroponto.desktop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "gerar_pdf", _gerar_pdf_espiao)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **kw: "saida.pdf")
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+
+    app._gerar_pdf()
+
+    assert chamadas[0]["pessoas_selecionadas"] is None
+
+
 def test_gerar_pdf_pelo_botao_inclui_trio_gestor(app, tmp_path, monkeypatch):
     """O botão "Gerar Livro Ponto" também gera a folha do trio gestor
     quando há gente cadastrada com tipo GESTAO e "Trio gestor" marcado
@@ -423,7 +500,7 @@ def test_lista_de_pessoas_mostra_rg_formatado_mesmo_cadastrado_sem_pontuacao(app
     app.dados.pessoas.append(_pessoa_exemplo(nome="Fulano", rg="123456789"))
     app._atualizar_listas_pessoas()
     valores = app.tree_administrativo.item("0", "values")
-    assert valores[1] == "12.345.678-9"
+    assert valores[2] == "12.345.678-9"
 
 
 def test_dialogo_pessoa_novo_preenchido_gera_resultado(app, monkeypatch):

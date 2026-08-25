@@ -876,13 +876,21 @@ def _bloco_tipo(
     incluir_termos: bool = True,
     imprimir_folha: bool = True,
     imprimir_consolidacao: bool = True,
+    pessoas_selecionadas: set[int] | None = None,
 ) -> list:
     """`imprimir_folha`/`imprimir_consolidacao` escolhem se a frente
     (folha de ponto/frequência) e o verso (consolidação) de fato entram
     no PDF — pensado pra imprimir frente e verso em duas passadas
     manuais na impressora. O docente não tem verso de consolidação
     separado (o resumo já vem embutido na própria folha de frequência),
-    então pra ele só `imprimir_folha` faz diferença."""
+    então pra ele só `imprimir_folha` faz diferença.
+
+    `pessoas_selecionadas`, se dado, é um conjunto de `id(pessoa)` — só
+    quem estiver nele ganha folha impressa (usado pra reimprimir a
+    folha/consolidação de um servidor específico, sem gerar o livro
+    inteiro de novo). A numeração de página não muda: continua contando
+    a posição de cada um na lista completa do tipo, não na dos
+    selecionados, pra "PAG: ___" bater com a página de fato no livro."""
     # Páginas em ordem de número de RG (não a ordem do cadastro).
     pessoas = sorted(config.pessoas_por_tipo(tipo), key=chave_ordenacao_rg)
     if not pessoas:
@@ -899,6 +907,8 @@ def _bloco_tipo(
     # selecionado pra imprimir, pra ficar sempre consistente com a
     # posição de cada um no livro completo.
     for numero_pagina, pessoa in enumerate(pessoas, start=1):
+        if pessoas_selecionadas is not None and id(pessoa) not in pessoas_selecionadas:
+            continue
         pagina_teve_conteudo = False
         if tipo in _TIPOS_FOLHA_PONTO:
             if imprimir_folha:
@@ -929,6 +939,7 @@ def gerar_pdf(
     incluir_termos: bool = True,
     imprimir_folha: bool = True,
     imprimir_consolidacao: bool = True,
+    pessoas_selecionadas: set[int] | None = None,
 ) -> Path:
     """Gera o PDF completo do Livro Ponto para o mês/ano de `config`.
 
@@ -944,6 +955,12 @@ def gerar_pdf(
     `imprimir_folha`/`imprimir_consolidacao` escolhem se a frente e o
     verso de cada folha entram — pensado pra imprimir frente e verso em
     duas passadas manuais na impressora.
+
+    `pessoas_selecionadas`, se dado, restringe as folhas geradas a um
+    subconjunto de `config.pessoas` (identificado por `id(pessoa)`) —
+    pra reimprimir a folha/consolidação de um ou poucos servidores sem
+    gerar o livro inteiro de novo, mantendo a numeração de página igual
+    à do livro completo.
     """
     pessoas_com_ponto = [p for p in config.pessoas if p.ponto]
     if not pessoas_com_ponto:
@@ -981,6 +998,7 @@ def gerar_pdf(
                 incluir_termos=incluir_termos,
                 imprimir_folha=imprimir_folha,
                 imprimir_consolidacao=imprimir_consolidacao,
+                pessoas_selecionadas=pessoas_selecionadas,
             )
 
     if not elementos:
