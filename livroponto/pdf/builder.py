@@ -63,7 +63,7 @@ _ROTULO_TIPO = {tipo: f"DO {qualificacao.upper()}" for tipo, qualificacao in _QU
 _TIPOS_FOLHA_PONTO = {TipoServidor.ADMINISTRATIVO, TipoServidor.GESTAO}
 
 _MARGEM = 1.0 * cm
-_MARGEM_ESQUERDA = 3.0 * cm  # mais larga que as demais, para dar espaço à encadernação
+_MARGEM_ESQUERDA = 1.5 * cm  # mais larga que as demais, para dar espaço à encadernação
 _LARGURA_CONTEUDO = A4[0] - _MARGEM_ESQUERDA - _MARGEM
 _LIMITE_OBSERVACAO = 170
 _LOGO_SP = Path(__file__).resolve().parent / "assets" / "brasao_sp.png"
@@ -207,7 +207,7 @@ def _termo(
             styles["Corpo"],
         )
     )
-    elementos.append(Spacer(1, 2.0 * cm))
+    elementos.append(Spacer(1, 3.0 * cm))
     elementos.append(Paragraph("_" * 50, styles["CorpoCentro"]))
     nome_diretor = config.nome_diretor()
     if nome_diretor:
@@ -524,7 +524,7 @@ def _folha_ponto(config: LivroPontoConfig, pessoa: Pessoa, dias, styles, numero_
         [_bloco_dados_pessoa(pessoa, styles)],
         [_tabela_dias(dias, styles)],
         [_secao_financeira(pessoa, styles, config.mes, config.ano)],
-        [Spacer(1, 0.25 * cm)],
+        [Spacer(1, 0.6 * cm)],
         [_rodape_assinaturas(styles)],
     ]
     outer = Table(conteudo, colWidths=[_LARGURA_CONTEUDO])
@@ -584,7 +584,7 @@ def _folha_consolidacao(config: LivroPontoConfig, pessoa: Pessoa, dias, styles) 
 
     elementos.append(Spacer(1, 0.6 * cm))
     elementos.append(Paragraph("DATA:  ___/___/_____", styles["Campo"]))
-    elementos.append(Spacer(1, 0.9 * cm))
+    elementos.append(Spacer(1, 1.5 * cm))
     elementos.append(Paragraph("_" * 50, styles["CorpoCentro"]))
     elementos.append(Paragraph("Assinatura do Superior Imediato", styles["CorpoCentro"]))
     elementos.append(Spacer(1, 0.2 * cm))
